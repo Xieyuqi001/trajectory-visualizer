@@ -1,3 +1,18 @@
+好的，我理解您的需求，这些改进将使您的工具更加实用和专业。
+
+我将根据您的要求，对代码进行以下**三大核心优化**：
+
+1.  **颜色配置 UI (前端选择色板)**：在控制面板中新增三个 `<input type="color">` 颜色选择器，直接修改轨迹线、当前点和背景颜色。
+2.  **3D 播放初始化修复**：修改 3D 渲染逻辑，确保初始状态（进度条在 0）时只显示第一个点，拖动进度条或播放时才逐渐显示轨迹。
+3.  **导出功能**：新增导出图片（PNG）和导出动画（GIF）的功能。为了实现动画导出，我引入了 `gif.js` 库。
+
+以下是**完整的、最新版**的 `index.html` 代码。请替换您现有文件中的所有内容。
+
+-----
+
+### 🚀 完整的 `index.html` 代码 (v3.0 - 包含所有增强)
+
+```html
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -9,13 +24,14 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://unpkg.com/gif.js@0.2.0/dist/gif.js"></script>
 
     <style>
         /* 确保可视化容器占满剩余空间 */
         #vis-container {
             flex-grow: 1;
             position: relative;
-            background-color: #27272a; /* 使用默认背景色 */
+            background-color: #27272a;
         }
         canvas {
             width: 100% !important;
@@ -37,12 +53,30 @@
             display: none; /* 默认隐藏，通过 JS 控制显示 */
         }
         .hidden { display: none; }
+        .color-input {
+            width: 40px;
+            height: 25px;
+            padding: 0;
+            border: 1px solid #d1d5db;
+            cursor: pointer;
+            border-radius: 4px;
+            /* 隐藏默认颜色选择器的边框 */
+            appearance: none;
+            -moz-appearance: none;
+            -webkit-appearance: none;
+        }
+        .color-input::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        .color-input::-webkit-color-swatch {
+            border: none;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col">
 
     <header class="bg-white shadow p-4 flex justify-between items-center z-10">
-        <h1 class="text-xl font-bold text-gray-800">🚀 轨迹动态可视化工具 (v1.0)</h1>
+        <h1 class="text-xl font-bold text-gray-800">🚀 轨迹动态可视化工具 (v3.0)</h1>
         <div id="status" class="text-sm font-medium text-gray-600">请上传 CSV 文件开始解析...</div>
     </header>
 
@@ -92,20 +126,41 @@
                 </div>
             </div>
 
-            <div class="p-3 border rounded-lg bg-white shadow-sm">
-                <h3 class="font-medium text-gray-700 mb-2">可视化配置</h3>
+            <div class="p-3 mb-5 border rounded-lg bg-white shadow-sm">
+                <h3 class="font-medium text-gray-700 mb-2">外观配置</h3>
                 
+                <div class="space-y-2 mb-3">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-medium text-gray-700">背景颜色</label>
+                        <input type="color" id="color-background" class="color-input" value="#27272a">
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-medium text-gray-700">轨迹线/历史点颜色</label>
+                        <input type="color" id="color-history" class="color-input" value="#3b82f6">
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-medium text-gray-700">当前高亮点颜色</label>
+                        <input type="color" id="color-current" class="color-input" value="#ffff00">
+                    </div>
+                </div>
+
                 <div class="mb-3">
                     <label class="block text-xs font-medium text-gray-700">点/圆圈尺寸 (<span id="size-val">5</span>)</label>
                     <input type="range" id="size-slider" min="1" max="20" value="5" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                 </div>
 
                 <div class="mb-3">
-                    <label class="block text-xs font-medium text-gray-700">不透明度 (<span id="opacity-val">0.5</span>)</label>
+                    <label class="block text-xs font-medium text-gray-700">轨迹不透明度 (<span id="opacity-val">0.5</span>)</label>
                     <input type="range" id="opacity-slider" min="0.1" max="1.0" step="0.1" value="0.5" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                 </div>
+            </div>
 
-                <p class="text-xs text-gray-500 mt-2">颜色配置请直接修改 JS 代码中的 `colorConfig` 变量。</p>
+            <div class="p-3 border rounded-lg bg-white shadow-sm">
+                <h3 class="font-medium text-gray-700 mb-2">导出</h3>
+                <div class="flex space-x-2">
+                    <button id="export-image-btn" class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-2 rounded text-sm disabled:bg-gray-400" disabled>导出图片 (PNG)</button>
+                    <button id="export-gif-btn" class="flex-1 bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-2 rounded text-sm disabled:bg-gray-400" disabled>导出动画 (GIF)</button>
+                </div>
             </div>
 
         </aside>
@@ -113,6 +168,13 @@
         <main id="vis-container" class="flex-1 bg-gray-200 relative">
             <canvas id="vis-2d" class="vis-canvas-2d"></canvas>
             <canvas id="vis-3d" class="vis-canvas-3d"></canvas>
+            <div id="gif-progress" class="hidden absolute top-0 left-0 w-full h-full bg-black bg-opacity-70 text-white flex flex-col items-center justify-center">
+                <p class="mb-4 text-lg font-semibold">正在生成 GIF 动画...</p>
+                <div class="w-1/2 bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                    <div id="gif-progress-bar" class="bg-purple-600 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <p id="gif-progress-text" class="mt-2 text-sm">0%</p>
+            </div>
         </main>
 
     </div>
@@ -130,7 +192,7 @@
 
         // 3D Three.js 变量
         let scene, camera, renderer, controls;
-        let pointsCloud2D, pointsCloud3D, currentSphere;
+        let pointsCloud3D, currentSphere;
         let line3D;
         let animationFrameId;
 
@@ -140,21 +202,19 @@
         let playbackSpeed = 1.0;
         const baseInterval = 10; // 基础间隔时间（毫秒）
 
-        // --- 颜色配置变量 (参考用户图片，使用深色背景和亮色点) ---
+        // --- 颜色配置变量 (通过 UI 动态更新) ---
         let colorConfig = {
-            historyLine: 'rgba(59, 130, 246, 0.4)', // 历史轨迹线 (淡蓝)
-            currentPoint: 'rgba(255, 255, 0, 1.0)', // 当前高亮点 (黄色)
-            heatmapColor: 'rgba(255, 0, 0, 1.0)',   // 热力点基础色 (红色)
-            backgroundColor: '#27272a'              // 可视化区域背景色 (深灰)
+            historyLine: document.getElementById('color-history') ? document.getElementById('color-history').value : '#3b82f6',
+            currentPoint: document.getElementById('color-current') ? document.getElementById('color-current').value : '#ffff00',
+            backgroundColor: document.getElementById('color-background') ? document.getElementById('color-background').value : '#27272a'
         };
-
+        
         // =================================================================
         // 核心函数：数据处理
         // =================================================================
 
         /**
          * 清理并处理数据，筛选出有效的 3D/2D 坐标。
-         * 确保列名和数据类型正确。
          */
         function processAndCleanData(data) {
             const requiredFields = ['timestamp', 'x_2d', 'y_2d', 'x_3d(m)', 'y_3d(m)', 'z_3d(m)'];
@@ -174,14 +234,14 @@
          * 计算运动指标（总时长、速度等）
          */
         function calculateMotionMetrics(data) {
-            if (data.length < 2) {
+            // ... (与上一版本保持一致) ...
+             if (data.length < 2) {
                 document.getElementById('total-time').textContent = '0';
                 document.getElementById('max-speed').textContent = '0';
                 document.getElementById('avg-speed').textContent = '0';
                 return;
             }
 
-            // 假设时间戳单位为秒 (s)
             const startTime = data[0].timestamp;
             const endTime = data[data.length - 1].timestamp;
             const totalTime = endTime - startTime;
@@ -193,14 +253,12 @@
                 const prev = data[i - 1];
                 const curr = data[i];
                 
-                // 3D 距离 (米)
                 const distance = Math.sqrt(
                     Math.pow(curr['x_3d(m)'] - prev['x_3d(m)'], 2) +
                     Math.pow(curr['y_3d(m)'] - prev['y_3d(m)'], 2) +
                     Math.pow(curr['z_3d(m)'] - prev['z_3d(m)'], 2)
                 );
                 
-                // 时间差 (秒)
                 const timeDiff = curr.timestamp - prev.timestamp;
 
                 if (timeDiff > 0) {
@@ -229,12 +287,11 @@
         function init2DChart() {
             const ctx = document.getElementById('vis-2d').getContext('2d');
             if (chart2d) {
-                chart2d.destroy(); // 销毁旧实例
+                chart2d.destroy();
             }
             
-            // 确保使用深色背景
             const bgColor = colorConfig.backgroundColor;
-            const textColor = '#e4e4e7'; // 浅色文字
+            const textColor = '#e4e4e7';
 
             chart2d = new Chart(ctx, {
                 type: 'scatter',
@@ -242,7 +299,6 @@
                     datasets: [{
                         label: '当前点',
                         data: [],
-                        // 引用 currentPoint 颜色
                         backgroundColor: colorConfig.currentPoint, 
                         pointRadius: 5,
                         borderColor: 'rgba(0, 0, 0, 0)',
@@ -251,7 +307,6 @@
                     {
                         label: '历史轨迹',
                         data: [],
-                        // 引用 historyLine 颜色
                         backgroundColor: colorConfig.historyLine, 
                         borderColor: colorConfig.historyLine,
                         borderWidth: 1,
@@ -271,19 +326,15 @@
                         x: { type: 'linear', position: 'bottom', title: { display: true, text: 'X (像素)', color: textColor }, ticks: { color: textColor }, grid: { color: 'rgba(255,255,255,0.1)' } },
                         y: { type: 'linear', title: { display: true, text: 'Y (像素)', color: textColor }, ticks: { color: textColor }, grid: { color: 'rgba(255,255,255,0.1)' } }
                     },
-                    // 设置背景色
-                    layout: {
-                        padding: 10
-                    },
+                    layout: { padding: 10 },
                     backgroundColor: bgColor
                 }
             });
-            // 确保 Canvas 元素的背景色也被设置
             document.getElementById('vis-2d').style.backgroundColor = bgColor;
         }
 
         /**
-         * 初始化 3D Three.js 场景
+         * 初始化 3D Three.js 场景 (只初始化场景和控制器)
          */
         function init3DScene() {
             const container = document.getElementById('vis-container');
@@ -293,11 +344,11 @@
 
             // 1. 场景 (Scene)
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(colorConfig.backgroundColor.replace('#', '0x')); // 设置背景色
+            scene.background = new THREE.Color(colorConfig.backgroundColor.replace('#', '0x'));
 
-            // 2. 相机 (Camera) - 使用透视相机
-            camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 100000); // 增大 far plane
-            camera.position.set(200, 200, 200); // 初始相机位置，调整到合适范围
+            // 2. 相机 (Camera)
+            camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 100000);
+            camera.position.set(200, 200, 200); 
 
             // 3. 渲染器 (Renderer)
             renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true });
@@ -316,7 +367,6 @@
             scene.add(directionalLight);
 
             // 6. 坐标轴 (Axes Helper)
-            // 自动根据数据范围调整坐标轴大小会更好，这里先给一个大值
             const axesHelper = new THREE.AxesHelper(5000); 
             axesHelper.name = 'Axes';
             scene.add(axesHelper);
@@ -324,7 +374,7 @@
             // 7. 渲染循环 (Animate Loop)
             function animate() {
                 animationFrameId = requestAnimationFrame(animate);
-                controls.update(); // 必须调用
+                controls.update();
                 renderer.render(scene, camera);
             }
             animate();
@@ -332,44 +382,63 @@
 
 
         /**
-         * 渲染 3D 可视化
+         * 修复 (2)：根据进度更新 3D 轨迹和当前点
          */
-        function render3DVisualization(data) {
-            // 1. 清理旧的轨迹和点
-            const oldPoints = scene.getObjectByName('TrajectoryPoints');
+        function update3DPath(data, frameIndex) {
+            // 清理旧的轨迹和点
             const oldLine = scene.getObjectByName('TrajectoryLine');
             const oldSphere = scene.getObjectByName('CurrentPoint');
             
-            if (oldPoints) scene.remove(oldPoints);
             if (oldLine) scene.remove(oldLine);
             if (oldSphere) scene.remove(oldSphere);
             
-            // 2. 绘制 3D 轨迹线
-            const points = data.map(d => new THREE.Vector3(d['x_3d(m)'], d['y_3d(m)'], d['z_3d(m)']));
-            const geometry = new THREE.BufferGeometry().setFromPoints(points);
-            const material = new THREE.LineBasicMaterial({ 
+            if (data.length === 0) return;
+
+            // 1. 轨迹线和点云只渲染到当前帧
+            const currentPath = data.slice(0, frameIndex + 1);
+            const pathPoints = currentPath.map(d => new THREE.Vector3(d['x_3d(m)'], d['y_3d(m)'], d['z_3d(m)']));
+            const geometry = new THREE.BufferGeometry().setFromPoints(pathPoints);
+            const opacity = parseFloat(document.getElementById('opacity-slider').value);
+            const pointSize = parseFloat(document.getElementById('size-slider').value) * 0.5;
+
+            // 绘制 3D 轨迹线
+            const lineMaterial = new THREE.LineBasicMaterial({ 
                 color: new THREE.Color(colorConfig.historyLine),
                 transparent: true,
-                opacity: 0.8
+                opacity: opacity
             });
-            line3D = new THREE.Line(geometry, material);
+            line3D = new THREE.Line(geometry, lineMaterial);
             line3D.name = 'TrajectoryLine';
             scene.add(line3D);
 
-            // 3. 绘制 3D 热力点 (Point Cloud)
+            // 绘制 3D 热力点 (Point Cloud)
             const pointsMaterial = new THREE.PointsMaterial({
-                color: new THREE.Color(colorConfig.heatmapColor), 
-                size: parseFloat(document.getElementById('size-slider').value) * 0.5, 
+                color: new THREE.Color(colorConfig.historyLine), 
+                size: pointSize, 
                 transparent: true,
-                opacity: parseFloat(document.getElementById('opacity-slider').value),
-                sizeAttenuation: true // 确保点的大小会随距离变化
+                opacity: opacity,
+                sizeAttenuation: true
             });
             pointsCloud3D = new THREE.Points(geometry, pointsMaterial);
             pointsCloud3D.name = 'TrajectoryPoints';
             scene.add(pointsCloud3D);
 
-            // 4. 更新当前高亮点 (Current Point Sphere)
-            update3DPoint(data[currentFrameIndex]);
+
+            // 2. 绘制当前高亮点 (Sphere)
+            const currentPointData = data[frameIndex];
+            if (currentPointData) {
+                const radius = parseFloat(document.getElementById('size-slider').value) * 1.5; 
+                const sphereGeometry = new THREE.SphereGeometry(radius, 16, 16); 
+                const sphereMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(colorConfig.currentPoint) });
+                
+                currentSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+                currentSphere.position.set(currentPointData['x_3d(m)'], currentPointData['y_3d(m)'], currentPointData['z_3d(m)']);
+                currentSphere.name = 'CurrentPoint';
+                scene.add(currentSphere);
+            }
+
+            // 优化：只有在播放或手动拖动时，才强制渲染
+            renderer.render(scene, camera);
         }
 
         /**
@@ -378,11 +447,14 @@
         function update2DChart() {
             if (!chart2d || cleanData.length === 0) return;
 
-            const maxFrames = parseInt(document.getElementById('frame-slider').max);
+            const currentPath = cleanData.slice(0, currentFrameIndex + 1);
             
             // 1. 历史轨迹线 (从头到当前帧)
-            const historyData = cleanData.slice(0, currentFrameIndex + 1).map(d => ({ x: d.x_2d, y: d.y_2d }));
+            const historyData = currentPath.map(d => ({ x: d.x_2d, y: d.y_2d }));
             chart2d.data.datasets[1].data = historyData;
+            chart2d.data.datasets[1].borderColor = colorConfig.historyLine;
+            chart2d.data.datasets[1].backgroundColor = colorConfig.historyLine;
+
 
             // 2. 当前点 (只显示一个点)
             const currentPoint = cleanData[currentFrameIndex];
@@ -394,29 +466,25 @@
         }
 
         /**
-         * 更新 3D 场景中的当前点位置
+         * 更新所有可视化内容 (2D 和 3D)
          */
-        function update3DPoint(pointData) {
-            const oldSphere = scene.getObjectByName('CurrentPoint');
-            if (oldSphere) scene.remove(oldSphere);
+        function updateVisualizations() {
+            if (cleanData.length === 0) return;
             
-            if (!pointData) return;
+            // 颜色更新：当切换模式或配置改变时，更新场景背景色
+            if (currentVisMode === '3d' && scene) {
+                 scene.background = new THREE.Color(colorConfig.backgroundColor.replace('#', '0x'));
+            } else if (currentVisMode === '2d' && chart2d) {
+                document.getElementById('vis-2d').style.backgroundColor = colorConfig.backgroundColor;
+                chart2d.options.backgroundColor = colorConfig.backgroundColor;
+            }
 
-            // 绘制当前高亮点 (Sphere)
-            const radius = parseFloat(document.getElementById('size-slider').value) * 1.5; // 半径比点云大
-            const sphereGeometry = new THREE.SphereGeometry(radius, 16, 16); 
-            const sphereMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(colorConfig.currentPoint) });
-            
-            currentSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-            currentSphere.position.set(pointData['x_3d(m)'], pointData['y_3d(m)'], pointData['z_3d(m)']);
-            currentSphere.name = 'CurrentPoint';
-            scene.add(currentSphere);
-
-            // 优化：将相机对准当前点
-            // controls.target.copy(currentSphere.position);
-            // controls.update();
-
-            renderer.render(scene, camera);
+            if (currentVisMode === '2d') {
+                update2DChart();
+            } else {
+                if (!scene) init3DScene();
+                update3DPath(cleanData, currentFrameIndex);
+            }
         }
         
         // =================================================================
@@ -424,47 +492,13 @@
         // =================================================================
 
         /**
-         * 切换 2D/3D 可视化模式
+         * 更新颜色配置对象
          */
-        function switchVisualizationMode(mode) {
-            currentVisMode = mode;
-            const vis2d = document.getElementById('vis-2d');
-            const vis3d = document.getElementById('vis-3d');
-
-            if (mode === '2d') {
-                vis2d.style.display = 'block';
-                vis3d.style.display = 'none';
-                if (!chart2d) init2DChart();
-                updateVisualizations();
-            } else {
-                vis2d.style.display = 'none';
-                vis3d.style.display = 'block';
-                if (!scene) init3DScene();
-                render3DVisualization(cleanData);
-            }
-        }
-        
-        /**
-         * 更新所有可视化内容 (2D 和 3D)
-         */
-        function updateVisualizations() {
-            if (cleanData.length === 0) return;
-            
-            if (currentVisMode === '2d') {
-                update2DChart();
-            } else {
-                // 3D 模式下，主要通过 update3DPoint 更新当前点
-                if (scene) {
-                    // 如果是初始渲染，需要先渲染所有轨迹点和线
-                    if (!scene.getObjectByName('TrajectoryLine')) {
-                         render3DVisualization(cleanData);
-                    }
-                    update3DPoint(cleanData[currentFrameIndex]);
-                } else {
-                    init3DScene();
-                    render3DVisualization(cleanData);
-                }
-            }
+        function updateColorConfig() {
+            colorConfig.historyLine = document.getElementById('color-history').value;
+            colorConfig.currentPoint = document.getElementById('color-current').value;
+            colorConfig.backgroundColor = document.getElementById('color-background').value;
+            updateVisualizations();
         }
 
         /**
@@ -480,6 +514,10 @@
             document.getElementById('frame-max').textContent = maxFrame;
             document.getElementById('frame-val').textContent = 0;
             document.getElementById('playback-controls').style.display = 'block';
+            
+            // 启用导出按钮
+            document.getElementById('export-image-btn').disabled = false;
+            document.getElementById('export-gif-btn').disabled = false;
 
             updateVisualizations();
         }
@@ -521,11 +559,124 @@
         }
 
         // =================================================================
+        // 导出功能实现
+        // =================================================================
+
+        /**
+         * 导出当前帧为图片 (PNG)
+         */
+        function exportImage() {
+            let canvas;
+            if (currentVisMode === '2d' && chart2d) {
+                // 2D: 使用 Chart.js 的 base64 方法
+                const image = chart2d.toBase64Image('image/png');
+                downloadURI(image, 'trajectory_2d_frame_' + currentFrameIndex + '.png');
+            } else if (currentVisMode === '3d' && renderer) {
+                // 3D: 使用 Three.js 渲染器的 toDataURL 方法
+                renderer.render(scene, camera);
+                const image = renderer.domElement.toDataURL('image/png');
+                downloadURI(image, 'trajectory_3d_frame_' + currentFrameIndex + '.png');
+            } else {
+                alert('请先加载数据并切换到 2D 或 3D 模式。');
+            }
+        }
+
+        /**
+         * 导出整个动画为 GIF (使用 gif.js)
+         */
+        function exportGIF() {
+            if (cleanData.length === 0) {
+                alert('请先加载数据。');
+                return;
+            }
+
+            // 锁定 UI，显示进度条
+            document.getElementById('gif-progress').classList.remove('hidden');
+            document.getElementById('export-gif-btn').disabled = true;
+            document.getElementById('export-image-btn').disabled = true;
+
+            const originalFrameIndex = currentFrameIndex;
+            const totalFrames = cleanData.length;
+            const canvasElement = (currentVisMode === '2d') ? document.getElementById('vis-2d') : document.getElementById('vis-3d');
+            const gif = new GIF({
+                workers: 4, // 使用多个 worker 提高生成速度
+                quality: 10,
+                width: canvasElement.clientWidth,
+                height: canvasElement.clientHeight
+            });
+
+            // 监听进度
+            gif.on('progress', function(p) {
+                const percent = Math.round(p * 100);
+                document.getElementById('gif-progress-bar').style.width = percent + '%';
+                document.getElementById('gif-progress-text').textContent = percent + '%';
+            });
+
+            // 监听生成完成
+            gif.on('finished', function(blob) {
+                document.getElementById('gif-progress').classList.add('hidden');
+                document.getElementById('export-gif-btn').disabled = false;
+                document.getElementById('export-image-btn').disabled = false;
+                
+                // 恢复播放状态
+                currentFrameIndex = originalFrameIndex;
+                document.getElementById('frame-slider').value = originalFrameIndex;
+                document.getElementById('frame-val').textContent = originalFrameIndex;
+                updateVisualizations();
+
+                // 下载 GIF
+                downloadURI(URL.createObjectURL(blob), 'trajectory_animation.gif');
+            });
+
+            // 逐帧添加图片到 GIF
+            const frameRate = baseInterval / playbackSpeed;
+            for (let i = 0; i < totalFrames; i++) {
+                // 临时更新当前帧
+                currentFrameIndex = i;
+                updateVisualizations();
+
+                // 强制等待渲染
+                if (currentVisMode === '3d') {
+                    renderer.render(scene, camera);
+                } else if (currentVisMode === '2d' && chart2d) {
+                    chart2d.update('none');
+                }
+                
+                // 添加到 GIF (使用 canvas 元素的副本)
+                gif.addFrame(canvasElement, { delay: frameRate, copy: true });
+            }
+
+            // 开始生成
+            gif.render();
+        }
+
+
+        /**
+         * 辅助函数：触发下载
+         */
+        function downloadURI(uri, name) {
+            const link = document.createElement('a');
+            link.download = name;
+            link.href = uri;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // =================================================================
         // 事件监听器
         // =================================================================
 
         document.addEventListener('DOMContentLoaded', () => {
             
+            // 确保 colorConfig 变量在 DOM 加载后初始化
+            if (!document.getElementById('color-history')) {
+                // 如果是第一次运行，且元素不存在，手动初始化以防崩溃
+                colorConfig = { historyLine: '#3b82f6', currentPoint: '#ffff00', backgroundColor: '#27272a' };
+            } else {
+                updateColorConfig();
+            }
+
             // 1. 文件上传事件
             document.getElementById('csv-file').addEventListener('change', handleFileUpload);
             
@@ -539,7 +690,6 @@
                 if (playInterval) {
                     stopPlayback();
                 } else {
-                    // 如果已到终点，从头开始播放
                     if (currentFrameIndex >= cleanData.length - 1) {
                         currentFrameIndex = 0;
                     }
@@ -560,7 +710,6 @@
                 playbackSpeed = parseFloat(e.target.value);
                 document.getElementById('speed-val').textContent = playbackSpeed.toFixed(1);
                 if (playInterval) {
-                    // 如果正在播放，重新启动定时器以应用新速度
                     clearInterval(playInterval);
                     startPlayback(); 
                 }
@@ -569,17 +718,25 @@
             // 6. 尺寸和不透明度滑块
             document.getElementById('size-slider').addEventListener('input', (e) => {
                 document.getElementById('size-val').textContent = e.target.value;
-                // 重新渲染以更新点大小
                 updateVisualizations();
             });
 
             document.getElementById('opacity-slider').addEventListener('input', (e) => {
                 document.getElementById('opacity-val').textContent = e.target.value;
-                // 重新渲染以更新不透明度
                 updateVisualizations();
             });
 
-            // 7. 窗口尺寸调整 (响应式布局)
+            // 7. 颜色选择器 (新功能: 用户前端配置颜色)
+            document.getElementById('color-history').addEventListener('input', updateColorConfig);
+            document.getElementById('color-current').addEventListener('input', updateColorConfig);
+            document.getElementById('color-background').addEventListener('input', updateColorConfig);
+
+            // 8. 导出按钮
+            document.getElementById('export-image-btn').addEventListener('click', exportImage);
+            document.getElementById('export-gif-btn').addEventListener('click', exportGIF);
+
+
+            // 9. 窗口尺寸调整 (响应式布局)
             window.addEventListener('resize', onWindowResize);
             
             // 初始化默认模式
@@ -629,13 +786,12 @@
             Papa.parse(file, {
                 header: true,
                 skipEmptyLines: 'greedy',
-                dynamicTyping: true, // 尝试将数字解析为数字类型
-                worker: true, // 关键：在后台线程中运行，防止 UI 卡顿
+                dynamicTyping: true, 
+                worker: true, 
                 
                 complete: (results, file) => {
                     progressDiv.classList.add('hidden');
                     
-                    // 3. 检查数据和列名
                     if (results.data.length === 0) {
                         status.textContent = '❌ CSV 解析失败：数据为空或格式错误。';
                         return;
@@ -651,7 +807,7 @@
 
                     // 4. 更新 UI 和可视化
                     calculateMotionMetrics(cleanData);
-                    resetPlayback(cleanData); // 重置并触发初次可视化
+                    resetPlayback(cleanData); 
                     
                     status.textContent = `✅ 数据加载成功！共 ${cleanData.length} 个有效数据点。`;
                 },
@@ -664,3 +820,4 @@
     </script>
 </body>
 </html>
+```
