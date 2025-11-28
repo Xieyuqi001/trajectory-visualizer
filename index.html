@@ -171,6 +171,7 @@
         // =================================================================
 
         let allData = [];           // 原始解析数据
+        let dataRanges = null; // 用于存储动态计算的坐标轴范围
         let cleanData = [];         // 清理后的有效数据
         let chart2d = null;         // Chart.js 实例
         let currentVisMode = '2d';  // 当前模式
@@ -218,6 +219,54 @@
         /**
          * 计算运动指标（总时长、速度等）
          */
+        /**
+ * 计算所有坐标轴的最小和最大范围 (Min/Max)
+ * @param {Array} data - 清理后的数据
+ * @returns {Object} 包含 '2d' 和 '3d' 范围的对象
+ */
+        function calculateDataRanges(data) {
+            if (data.length === 0) {
+                return {
+                    '2d': { minX: 0, maxX: 1000, minY: 0, maxY: 1000 },
+                    '3d': { minX: 0, maxX: 5000, minY: 0, maxY: 5000, minZ: 0, maxZ: 5000 }
+                };
+            }
+        
+            const fields2D = ['x_2d', 'y_2d'];
+            const fields3D = ['x_3d(m)', 'y_3d(m)', 'z_3d(m)'];
+        
+            // 初始值设为第一个数据点的值
+            const ranges2D = {
+                minX: data[0].x_2d, maxX: data[0].x_2d,
+                minY: data[0].y_2d, maxY: data[0].y_2d
+            };
+            const ranges3D = {
+                minX: data[0]['x_3d(m)'], maxX: data[0]['x_3d(m)'],
+                minY: data[0]['y_3d(m)'], maxY: data[0]['y_3d(m)'],
+                minZ: data[0]['z_3d(m)'], maxZ: data[0]['z_3d(m)']
+            };
+        
+            data.forEach(d => {
+                // 2D 范围计算
+                ranges2D.minX = Math.min(ranges2D.minX, d.x_2d);
+                ranges2D.maxX = Math.max(ranges2D.maxX, d.x_2d);
+                ranges2D.minY = Math.min(ranges2D.minY, d.y_2d);
+                ranges2D.maxY = Math.max(ranges2D.maxY, d.y_2d);
+                
+                // 3D 范围计算
+                ranges3D.minX = Math.min(ranges3D.minX, d['x_3d(m)']);
+                ranges3D.maxX = Math.max(ranges3D.maxX, d['x_3d(m)']);
+                ranges3D.minY = Math.min(ranges3D.minY, d['y_3d(m)']);
+                ranges3D.maxY = Math.max(ranges3D.maxY, d['y_3d(m)']);
+                ranges3D.minZ = Math.min(ranges3D.minZ, d['z_3d(m)']);
+                ranges3D.maxZ = Math.max(ranges3D.maxZ, d['z_3d(m)']);
+            });
+            
+            return { '2d': ranges2D, '3d': ranges3D };
+        }
+        
+
+        
         function calculateMotionMetrics(data) {
             // ... (与上一版本保持一致) ...
              if (data.length < 2) {
@@ -277,6 +326,11 @@
             
             const bgColor = colorConfig.backgroundColor;
             const textColor = '#e4e4e7';
+            // 计算边距（10%）
+            const rangeX2D = dataRanges['2d'].maxX - dataRanges['2d'].minX;
+            const rangeY2D = dataRanges['2d'].maxY - dataRanges['2d'].minY;
+            const paddingX = rangeX2D * 0.1;
+            const paddingY = rangeY2D * 0.1;
 
             chart2d = new Chart(ctx, {
                 type: 'scatter',
@@ -308,12 +362,28 @@
                         title: { display: true, text: '2D 轨迹 (x_2d, y_2d)', color: textColor }
                     },
                     scales: {
-                        x: { type: 'linear', position: 'bottom', title: { display: true, text: 'X (像素)', color: textColor }, ticks: { color: textColor }, grid: { color: 'rgba(255,255,255,0.1)' } },
-                        y: { type: 'linear', title: { display: true, text: 'Y (像素)', color: textColor }, ticks: { color: textColor }, grid: { color: 'rgba(255,255,255,0.1)' } }
-                    },
-                    layout: { padding: 10 },
-                    backgroundColor: bgColor
-                }
+                        x: { 
+                            type: 'linear', 
+                            position: 'bottom', 
+                            title: { display: true, text: 'X (像素)', color: textColor }, 
+                            ticks: { color: textColor }, 
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            // --- 应用动态范围 ---
+                            min: dataRanges['2d'].minX - paddingX, 
+                            max: dataRanges['2d'].maxX + paddingX 
+                            // ----------------------
+                        },
+                        y: { 
+                            type: 'linear', 
+                            title: { display: true, text: 'Y (像素)', color: textColor }, 
+                            ticks: { color: textColor }, 
+                            grid: { color: 'rgba(255,255,255,0.1)' },
+                            // --- 应用动态范围 ---
+                            min: dataRanges['2d'].minY - paddingY, 
+                            max: dataRanges['2d'].maxY + paddingY 
+                            // ----------------------
+                        }
+                    }
             });
             document.getElementById('vis-2d').style.backgroundColor = bgColor;
         }
@@ -332,8 +402,28 @@
             scene.background = new THREE.Color(colorConfig.backgroundColor.replace('#', '0x'));
 
             // 2. 相机 (Camera)
-            camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 100000);
-            camera.position.set(200, 200, 200); 
+            const center3D = {
+                x: (dataRanges['3d'].minX + dataRanges['3d'].maxX) / 2,
+                y: (dataRanges['3d'].minY + dataRanges['3d'].maxY) / 2,
+                z: (dataRanges['3d'].minZ + dataRanges['3d'].maxZ) / 2,
+            };
+            const maxSize = Math.max(
+                dataRanges['3d'].maxX - dataRanges['3d'].minX,
+                dataRanges['3d'].maxY - dataRanges['3d'].minY,
+                dataRanges['3d'].maxZ - dataRanges['3d'].minZ
+            );
+            const cameraDistance = maxSize * 1.5 || 5000; // 确保相机足够远
+
+            camera = new THREE.PerspectiveCamera(75, width / height, 0.1, cameraDistance * 20);
+            
+            // 将相机位置设定在数据中心点偏移一定距离
+            camera.position.set(
+                center3D.x + cameraDistance, 
+                center3D.y + cameraDistance, 
+                center3D.z + cameraDistance
+            ); 
+            // 确保 controls 的 target 是数据中心点
+            controls.target.set(center3D.x, center3D.y, center3D.z);
 
             // 3. 渲染器 (Renderer)
             renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true });
@@ -352,7 +442,9 @@
             scene.add(directionalLight);
 
             // 6. 坐标轴 (Axes Helper)
-            const axesHelper = new THREE.AxesHelper(5000); 
+            const axesHelperSize = maxSize * 1.5 || 5000;
+            const axesHelper = new THREE.AxesHelper(axesHelperSize); 
+            axesHelper.position.set(center3D.x, center3D.y, center3D.z); // 放置在数据中心
             axesHelper.name = 'Axes';
             scene.add(axesHelper);
 
@@ -792,6 +884,9 @@
 
                     // 4. 更新 UI 和可视化
                     calculateMotionMetrics(cleanData);
+                    // --- 调用新函数计算数据范围 (新添加) ---
+                    dataRanges = calculateDataRanges(cleanData);
+                    // ----------------------------------------
                     resetPlayback(cleanData); 
                     
                     status.textContent = `✅ 数据加载成功！共 ${cleanData.length} 个有效数据点。`;
