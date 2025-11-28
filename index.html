@@ -61,7 +61,7 @@
 <body class="bg-gray-100 min-h-screen flex flex-col">
 
     <header class="bg-white shadow p-4 flex justify-between items-center z-10">
-        <h1 class="text-xl font-bold text-gray-800">🚀 轨迹动态可视化工具 (v3.0)</h1>
+        <h1 class="text-xl font-bold text-gray-800">🚀 轨迹动态可视化工具 (v4.0)</h1>
         <div id="status" class="text-sm font-medium text-gray-600">请上传 CSV 文件开始解析...</div>
     </header>
 
@@ -171,7 +171,6 @@
         // =================================================================
 
         let allData = [];           // 原始解析数据
-        let dataRanges = null; // 用于存储动态计算的坐标轴范围
         let cleanData = [];         // 清理后的有效数据
         let chart2d = null;         // Chart.js 实例
         let currentVisMode = '2d';  // 当前模式
@@ -187,6 +186,8 @@
         let playInterval = null;
         let playbackSpeed = 1.0;
         const baseInterval = 10; // 基础间隔时间（毫秒）
+
+        let dataRanges = null; // 用于存储动态计算的坐标轴范围
 
         // --- 颜色配置变量 (通过 UI 动态更新) ---
         let colorConfig = {
@@ -217,13 +218,10 @@
         }
 
         /**
-         * 计算运动指标（总时长、速度等）
+         * 计算所有坐标轴的最小和最大范围 (Min/Max)
+         * @param {Array} data - 清理后的数据
+         * @returns {Object} 包含 '2d' 和 '3d' 范围的对象
          */
-        /**
- * 计算所有坐标轴的最小和最大范围 (Min/Max)
- * @param {Array} data - 清理后的数据
- * @returns {Object} 包含 '2d' 和 '3d' 范围的对象
- */
         function calculateDataRanges(data) {
             if (data.length === 0) {
                 return {
@@ -231,10 +229,7 @@
                     '3d': { minX: 0, maxX: 5000, minY: 0, maxY: 5000, minZ: 0, maxZ: 5000 }
                 };
             }
-        
-            const fields2D = ['x_2d', 'y_2d'];
-            const fields3D = ['x_3d(m)', 'y_3d(m)', 'z_3d(m)'];
-        
+
             // 初始值设为第一个数据点的值
             const ranges2D = {
                 minX: data[0].x_2d, maxX: data[0].x_2d,
@@ -245,7 +240,7 @@
                 minY: data[0]['y_3d(m)'], maxY: data[0]['y_3d(m)'],
                 minZ: data[0]['z_3d(m)'], maxZ: data[0]['z_3d(m)']
             };
-        
+
             data.forEach(d => {
                 // 2D 范围计算
                 ranges2D.minX = Math.min(ranges2D.minX, d.x_2d);
@@ -264,11 +259,11 @@
             
             return { '2d': ranges2D, '3d': ranges3D };
         }
-        
 
-        
+        /**
+         * 计算运动指标（总时长、速度等）
+         */
         function calculateMotionMetrics(data) {
-            // ... (与上一版本保持一致) ...
              if (data.length < 2) {
                 document.getElementById('total-time').textContent = '0';
                 document.getElementById('max-speed').textContent = '0';
@@ -324,13 +319,17 @@
                 chart2d.destroy();
             }
             
+            // 确保 dataRanges 存在
+            if (!dataRanges) return;
+
             const bgColor = colorConfig.backgroundColor;
             const textColor = '#e4e4e7';
+            
             // 计算边距（10%）
             const rangeX2D = dataRanges['2d'].maxX - dataRanges['2d'].minX;
             const rangeY2D = dataRanges['2d'].maxY - dataRanges['2d'].minY;
-            const paddingX = rangeX2D * 0.1;
-            const paddingY = rangeY2D * 0.1;
+            const paddingX = rangeX2D * 0.1 || 100; // 至少100
+            const paddingY = rangeY2D * 0.1 || 100;
 
             chart2d = new Chart(ctx, {
                 type: 'scatter',
@@ -368,22 +367,21 @@
                             title: { display: true, text: 'X (像素)', color: textColor }, 
                             ticks: { color: textColor }, 
                             grid: { color: 'rgba(255,255,255,0.1)' },
-                            // --- 应用动态范围 ---
                             min: dataRanges['2d'].minX - paddingX, 
                             max: dataRanges['2d'].maxX + paddingX 
-                            // ----------------------
                         },
                         y: { 
                             type: 'linear', 
                             title: { display: true, text: 'Y (像素)', color: textColor }, 
                             ticks: { color: textColor }, 
                             grid: { color: 'rgba(255,255,255,0.1)' },
-                            // --- 应用动态范围 ---
                             min: dataRanges['2d'].minY - paddingY, 
                             max: dataRanges['2d'].maxY + paddingY 
-                            // ----------------------
                         }
-                    }
+                    },
+                    layout: { padding: 10 },
+                    backgroundColor: bgColor
+                }
             });
             document.getElementById('vis-2d').style.backgroundColor = bgColor;
         }
@@ -396,12 +394,15 @@
             const width = container.clientWidth;
             const height = container.clientHeight;
             const canvas3d = document.getElementById('vis-3d');
+            
+            // 确保 dataRanges 存在
+            if (!dataRanges) return;
 
             // 1. 场景 (Scene)
             scene = new THREE.Scene();
             scene.background = new THREE.Color(colorConfig.backgroundColor.replace('#', '0x'));
 
-            // 2. 相机 (Camera)
+            // 2. 相机 (Camera) 
             const center3D = {
                 x: (dataRanges['3d'].minX + dataRanges['3d'].maxX) / 2,
                 y: (dataRanges['3d'].minY + dataRanges['3d'].maxY) / 2,
@@ -412,7 +413,7 @@
                 dataRanges['3d'].maxY - dataRanges['3d'].minY,
                 dataRanges['3d'].maxZ - dataRanges['3d'].minZ
             );
-            const cameraDistance = maxSize * 1.5 || 5000; // 确保相机足够远
+            const cameraDistance = maxSize * 1.5 || 5000; 
 
             camera = new THREE.PerspectiveCamera(75, width / height, 0.1, cameraDistance * 20);
             
@@ -422,8 +423,6 @@
                 center3D.y + cameraDistance, 
                 center3D.z + cameraDistance
             ); 
-            // 确保 controls 的 target 是数据中心点
-            controls.target.set(center3D.x, center3D.y, center3D.z);
 
             // 3. 渲染器 (Renderer)
             renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true });
@@ -433,6 +432,9 @@
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true; 
             controls.dampingFactor = 0.05;
+            controls.target.set(center3D.x, center3D.y, center3D.z); // 确保 controls 的 target 是数据中心点
+            controls.update();
+
 
             // 5. 光源
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -444,7 +446,7 @@
             // 6. 坐标轴 (Axes Helper)
             const axesHelperSize = maxSize * 1.5 || 5000;
             const axesHelper = new THREE.AxesHelper(axesHelperSize); 
-            axesHelper.position.set(center3D.x, center3D.y, center3D.z); // 放置在数据中心
+            axesHelper.position.set(center3D.x, center3D.y, center3D.z); 
             axesHelper.name = 'Axes';
             scene.add(axesHelper);
 
@@ -459,14 +461,16 @@
 
 
         /**
-         * 修复 (2)：根据进度更新 3D 轨迹和当前点
+         * 根据进度更新 3D 轨迹和当前点
          */
         function update3DPath(data, frameIndex) {
             // 清理旧的轨迹和点
             const oldLine = scene.getObjectByName('TrajectoryLine');
+            const oldPoints = scene.getObjectByName('TrajectoryPoints'); // 清理点云
             const oldSphere = scene.getObjectByName('CurrentPoint');
             
             if (oldLine) scene.remove(oldLine);
+            if (oldPoints) scene.remove(oldPoints);
             if (oldSphere) scene.remove(oldSphere);
             
             if (data.length === 0) return;
@@ -490,7 +494,7 @@
 
             // 绘制 3D 热力点 (Point Cloud)
             const pointsMaterial = new THREE.PointsMaterial({
-                color: new THREE.Color(colorConfig.historyLine), 
+                color: new THREE.Color(colorConfig.historyLine), // 轨迹点使用历史颜色
                 size: pointSize, 
                 transparent: true,
                 opacity: opacity,
@@ -514,7 +518,6 @@
                 scene.add(currentSphere);
             }
 
-            // 优化：只有在播放或手动拖动时，才强制渲染
             renderer.render(scene, camera);
         }
 
@@ -554,12 +557,19 @@
             } else if (currentVisMode === '2d' && chart2d) {
                 document.getElementById('vis-2d').style.backgroundColor = colorConfig.backgroundColor;
                 chart2d.options.backgroundColor = colorConfig.backgroundColor;
+                // 重新初始化图表以应用新的背景色和刻度配置
+                init2DChart(); 
             }
 
             if (currentVisMode === '2d') {
                 update2DChart();
             } else {
                 if (!scene) init3DScene();
+                // 确保在 3D 模式下，轴和相机设置是正确的
+                const axes = scene.getObjectByName('Axes');
+                if (!axes) {
+                    init3DScene();
+                }
                 update3DPath(cleanData, currentFrameIndex);
             }
         }
@@ -576,6 +586,27 @@
             colorConfig.currentPoint = document.getElementById('color-current').value;
             colorConfig.backgroundColor = document.getElementById('color-background').value;
             updateVisualizations();
+        }
+
+        /**
+         * 切换 2D/3D 可视化模式
+         */
+        function switchVisualizationMode(mode) {
+            currentVisMode = mode;
+            const vis2d = document.getElementById('vis-2d');
+            const vis3d = document.getElementById('vis-3d');
+
+            if (mode === '2d') {
+                vis2d.style.display = 'block';
+                vis3d.style.display = 'none';
+                if (!chart2d && dataRanges) init2DChart();
+                updateVisualizations();
+            } else {
+                vis2d.style.display = 'none';
+                vis3d.style.display = 'block';
+                if (!scene && dataRanges) init3DScene();
+                updateVisualizations();
+            }
         }
 
         /**
@@ -613,7 +644,6 @@
             playInterval = setInterval(() => {
                 if (currentFrameIndex >= totalFrames) {
                     stopPlayback();
-                    // 播放结束后，按钮切回播放状态
                     document.getElementById('play-btn').innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"></path></svg><span class="ml-2">播放</span>';
                     return;
                 }
@@ -643,19 +673,27 @@
          * 导出当前帧为图片 (PNG)
          */
         function exportImage() {
+            if (cleanData.length === 0) return;
             let canvas;
+            let downloadName;
+
             if (currentVisMode === '2d' && chart2d) {
                 // 2D: 使用 Chart.js 的 base64 方法
-                const image = chart2d.toBase64Image('image/png');
-                downloadURI(image, 'trajectory_2d_frame_' + currentFrameIndex + '.png');
+                canvas = document.getElementById('vis-2d');
+                downloadName = 'trajectory_2d_frame_' + currentFrameIndex + '.png';
             } else if (currentVisMode === '3d' && renderer) {
                 // 3D: 使用 Three.js 渲染器的 toDataURL 方法
                 renderer.render(scene, camera);
-                const image = renderer.domElement.toDataURL('image/png');
-                downloadURI(image, 'trajectory_3d_frame_' + currentFrameIndex + '.png');
+                canvas = document.getElementById('vis-3d');
+                downloadName = 'trajectory_3d_frame_' + currentFrameIndex + '.png';
             } else {
                 alert('请先加载数据并切换到 2D 或 3D 模式。');
+                return;
             }
+            
+            // 兼容性下载：使用 toDataURL
+            const image = canvas.toDataURL('image/png');
+            downloadURI(image, downloadName);
         }
 
         /**
@@ -675,8 +713,9 @@
             const originalFrameIndex = currentFrameIndex;
             const totalFrames = cleanData.length;
             const canvasElement = (currentVisMode === '2d') ? document.getElementById('vis-2d') : document.getElementById('vis-3d');
+            
             const gif = new GIF({
-                workers: 4, // 使用多个 worker 提高生成速度
+                workers: 4, 
                 quality: 10,
                 width: canvasElement.clientWidth,
                 height: canvasElement.clientHeight
@@ -712,14 +751,12 @@
                 currentFrameIndex = i;
                 updateVisualizations();
 
-                // 强制等待渲染
-                if (currentVisMode === '3d') {
+                // 强制渲染以确保 canvas 更新
+                if (currentVisMode === '3d' && renderer) {
                     renderer.render(scene, camera);
-                } else if (currentVisMode === '2d' && chart2d) {
-                    chart2d.update('none');
                 }
                 
-                // 添加到 GIF (使用 canvas 元素的副本)
+                // 添加到 GIF
                 gif.addFrame(canvasElement, { delay: frameRate, copy: true });
             }
 
@@ -748,7 +785,6 @@
             
             // 确保 colorConfig 变量在 DOM 加载后初始化
             if (!document.getElementById('color-history')) {
-                // 如果是第一次运行，且元素不存在，手动初始化以防崩溃
                 colorConfig = { historyLine: '#3b82f6', currentPoint: '#ffff00', backgroundColor: '#27272a' };
             } else {
                 updateColorConfig();
@@ -782,7 +818,7 @@
                 updateVisualizations();
             });
 
-            // 5. 速度调整滑块 (关键修复: 重新启动定时器)
+            // 5. 速度调整滑块
             document.getElementById('speed-slider').addEventListener('input', (e) => {
                 playbackSpeed = parseFloat(e.target.value);
                 document.getElementById('speed-val').textContent = playbackSpeed.toFixed(1);
@@ -858,6 +894,7 @@
             stopPlayback();
             allData = [];
             cleanData = [];
+            dataRanges = null; // 清空范围
             
             // 2. 使用 Papa Parse 解析 CSV
             Papa.parse(file, {
@@ -884,9 +921,11 @@
 
                     // 4. 更新 UI 和可视化
                     calculateMotionMetrics(cleanData);
-                    // --- 调用新函数计算数据范围 (新添加) ---
+                    
+                    // --- 调用新函数计算数据范围 ---
                     dataRanges = calculateDataRanges(cleanData);
-                    // ----------------------------------------
+                    // -----------------------------
+                    
                     resetPlayback(cleanData); 
                     
                     status.textContent = `✅ 数据加载成功！共 ${cleanData.length} 个有效数据点。`;
