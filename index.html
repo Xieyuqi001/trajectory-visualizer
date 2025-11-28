@@ -3,308 +3,634 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>动态物体轨迹热力图可视化工具</title>
+    <title>动态轨迹可视化工具 (3D & 2D)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/gif.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/recordrtc@5.6.2/RecordRTC.min.js"></script>
 
     <style>
-        /* 自定义滚动条样式 */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-thumb { background-color: #9ca3af; border-radius: 3px; }
-        ::-webkit-scrollbar-track { background-color: #f3f4f6; }
-        .vis-container {
-            width: 100%;
-            height: 100%;
-            min-height: 500px;
-            background-color: #27272a; /* 统一暗色背景 */
+        /* 确保可视化容器占满剩余空间 */
+        #vis-container {
+            flex-grow: 1;
             position: relative;
-            overflow: hidden;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            background-color: #27272a; /* 使用默认背景色 */
         }
-        #vis-canvas-2d, #vis-canvas-3d {
-            width: 100%;
-            height: 100%;
+        canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+        /* 进度条样式 */
+        #progress-bar {
+            height: 4px;
+            background-color: #f59e0b; /* 橙色 */
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .vis-canvas-3d, .vis-canvas-2d {
             position: absolute;
             top: 0;
             left: 0;
+            width: 100%;
+            height: 100%;
+            display: none; /* 默认隐藏，通过 JS 控制显示 */
         }
-        .drag-area {
-            border: 2px dashed #9ca3af;
-            background-color: #f9fafb;
-            transition: all 0.2s;
-        }
-        .drag-area.active {
-            border: 2px dashed #3b82f6;
-            background-color: #dbeafe;
-        }
+        .hidden { display: none; }
     </style>
 </head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
 
-<body class="bg-gray-100 min-h-screen">
+    <header class="bg-white shadow p-4 flex justify-between items-center z-10">
+        <h1 class="text-xl font-bold text-gray-800">🚀 轨迹动态可视化工具 (v1.0)</h1>
+        <div id="status" class="text-sm font-medium text-gray-600">请上传 CSV 文件开始解析...</div>
+    </header>
 
-    <div class="container mx-auto p-4">
-        <header class="bg-white p-4 rounded-lg shadow-lg mb-4 flex justify-between items-center">
-            <h1 class="text-3xl font-bold text-gray-800 flex items-center">
-                <svg class="w-8 h-8 text-blue-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8m3-2a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                动态物体轨迹热力图可视化工具
-            </h1>
-            <button id="help-btn" class="text-sm text-blue-500 hover:text-blue-700 font-medium">
-                <svg class="w-5 h-5 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9.247a1 1 0 01.796-.109l.003.001c.21.05.34.25.34.46V12a1 1 0 01-1 1H7a1 1 0 01-1-1v-2.39c0-.131.026-.262.078-.387a1 1 0 01.35-.494l.006-.003c.12-.08.26-.118.4-.118h.001z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2a10 10 0 100 20 10 10 0 000-20z"></path></svg>
-                帮助/说明
-            </button>
-        </header>
-
-        <main class="grid grid-cols-1 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-
-            <div class="lg:col-span-1 space-y-4">
-                <div class="bg-white p-4 rounded-lg shadow">
-                    <h2 class="text-xl font-semibold mb-3 border-b pb-2">📂 数据上传与概览</h2>
-                    <div id="upload-drag-area" class="drag-area p-6 text-center cursor-pointer rounded-lg mb-3">
-                        <p class="text-gray-600 font-medium">拖拽 CSV 文件到此</p>
-                        <p class="text-sm text-gray-400">或点击按钮选择文件</p>
-                        <input type="file" id="csv-file-input" accept=".csv" class="hidden" />
-                    </div>
-                    <button id="upload-btn" class="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 transition">上传 CSV 文件</button>
-                    <div id="upload-progress" class="w-full bg-gray-200 rounded-full h-2.5 mt-2 hidden">
-                        <div class="bg-blue-400 h-2.5 rounded-full" style="width: 0%"></div>
-                    </div>
-                </div>
-
-                <div class="bg-white p-4 rounded-lg shadow">
-                    <h3 class="text-lg font-semibold mb-2">📊 数据概览</h3>
-                    <div id="data-stats" class="text-sm text-gray-600 space-y-1">
-                        <p>总数据点：<span id="stat-total-points" class="font-medium text-gray-800">0</span></p>
-                        <p>运动总时间：<span id="stat-total-time" class="font-medium text-gray-800">0 s</span></p>
-                        <p>时间范围：<span id="stat-time-range" class="font-medium text-gray-800">-</span></p>
-                        <p>2D 坐标范围 (X/Y)：<span id="stat-2d-range" class="font-medium text-gray-800">-</span></p>
-                        <p>3D 坐标范围 (X/Y/Z)：<span id="stat-3d-range" class="font-medium text-gray-800">-</span></p>
-                    </div>
+    <div class="flex flex-1 overflow-hidden">
+        
+        <aside class="w-80 p-4 bg-gray-50 border-r overflow-y-auto">
+            <h2 class="text-lg font-semibold mb-3 text-gray-800">控制面板</h2>
+            
+            <div class="mb-5 p-3 border rounded-lg bg-white shadow-sm">
+                <h3 class="font-medium text-gray-700 mb-2">数据加载</h3>
+                <input type="file" id="csv-file" accept=".csv" class="w-full text-sm text-gray-500 file:mr-4 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-yellow-50 file:text-yellow-600 hover:file:bg-yellow-100">
+                <div id="progress-container" class="mt-2 rounded-full overflow-hidden bg-gray-200 hidden">
+                    <div id="progress-bar"></div>
                 </div>
             </div>
 
-            <div class="lg:col-span-2 xl:col-span-3">
-                <div class="bg-white p-2 rounded-lg shadow h-full flex flex-col">
-                    <div class="flex justify-between items-center mb-2">
-                        <h2 class="text-xl font-semibold">🌌 轨迹可视化</h2>
-                        <div class="flex space-x-2">
-                            <button id="toggle-vis-btn" class="px-3 py-1 text-sm rounded-md bg-green-500 text-white hover:bg-green-600 transition">
-                                切换 2D / 3D 模式
-                            </button>
-                            <span id="mode-display" class="px-3 py-1 text-sm bg-gray-200 rounded-md">当前: 2D 模式</span>
-                        </div>
-                    </div>
-                    <div id="vis-container" class="vis-container flex-grow relative">
-                        <canvas id="vis-canvas-2d" class="z-10"></canvas>
-                        <div id="vis-canvas-3d" class="z-20 hidden"></div>
-                        <div id="mouse-coords" class="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white text-xs p-1 rounded z-30 hidden">
-                            (X: 0, Y: 0)
-                        </div>
-                    </div>
+            <div class="mb-5 p-3 border rounded-lg bg-white shadow-sm">
+                <h3 class="font-medium text-gray-700 mb-2">模式选择</h3>
+                <select id="vis-mode" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                    <option value="2d">2D 热力图 (x_2d, y_2d)</option>
+                    <option value="3d">3D 轨迹 (x_3d, y_3d, z_3d)</option>
+                </select>
+            </div>
+
+            <div id="playback-controls" class="mb-5 p-3 border rounded-lg bg-white shadow-sm" style="display: none;">
+                <h3 class="font-medium text-gray-700 mb-2">动态播放</h3>
+
+                <button id="play-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-full transition duration-150 ease-in-out flex items-center mb-3">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"></path></svg>
+                    <span class="ml-2">播放/暂停</span>
+                </button>
+
+                <div class="mb-3">
+                    <label class="block text-xs font-medium text-gray-700">帧进度 (<span id="frame-val">0</span> / <span id="frame-max">0</span>)</label>
+                    <input type="range" id="frame-slider" min="0" max="0" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <div class="mb-3">
+                    <label class="block text-xs font-medium text-gray-700">播放速度 (<span id="speed-val">1.0</span>x)</label>
+                    <input type="range" id="speed-slider" min="0.1" max="5.0" step="0.1" value="1.0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <div class="text-sm border-t pt-3 mt-3">
+                    <p>总时长: <span id="total-time">0</span> s</p>
+                    <p>最快速度: <span id="max-speed">0</span> m/s</p>
+                    <p>平均速度: <span id="avg-speed">0</span> m/s</p>
                 </div>
             </div>
 
-            <div class="lg:col-span-1 space-y-4">
-                <div class="bg-white p-4 rounded-lg shadow">
-                    <h2 class="text-xl font-semibold mb-3 border-b pb-2 flex justify-between items-center">
-                        📈 运动指标
-                        <button id="export-metrics-btn" class="text-xs text-blue-500 hover:text-blue-700">导出</button>
-                    </h2>
-                    <div id="metrics-display" class="text-sm text-gray-600 space-y-2">
-                        <p>总运动距离：<span id="metric-distance" class="font-bold text-lg text-red-600 cursor-copy" title="点击复制">0.00 m</span></p>
-                        <p>平均速度：<span id="metric-avg-speed" class="font-bold text-lg text-red-600 cursor-copy" title="点击复制">0.00 m/s</span></p>
-                        <p>最大瞬时速度：<span id="metric-max-speed" class="font-bold text-lg text-red-600 cursor-copy" title="点击复制">0.00 m/s</span></p>
-                    </div>
+            <div class="p-3 border rounded-lg bg-white shadow-sm">
+                <h3 class="font-medium text-gray-700 mb-2">可视化配置</h3>
+                
+                <div class="mb-3">
+                    <label class="block text-xs font-medium text-gray-700">点/圆圈尺寸 (<span id="size-val">5</span>)</label>
+                    <input type="range" id="size-slider" min="1" max="20" value="5" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                 </div>
 
-                <div class="bg-white p-4 rounded-lg shadow">
-                    <h2 class="text-xl font-semibold mb-3 border-b pb-2">▶️ 动态播放控制</h2>
-                    <div class="flex space-x-2 mb-3">
-                        <button id="play-btn" class="p-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition" title="播放/暂停"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"></path></svg></button>
-                        <button id="reset-btn" class="p-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 transition" title="重置"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm1 2h10v10H5V4z"></path></svg></button>
-                        <div class="flex-grow">
-                            <label class="block text-xs text-gray-500">播放速度 (<span id="speed-val">1.0</span>x)</label>
-                            <input type="range" id="speed-slider" min="0.5" max="3" step="0.1" value="1" class="w-full">
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="block text-sm font-medium text-gray-700">时间轴 (<span id="current-time">0.00</span>s / <span id="max-time">0.00</span>s)</label>
-                        <input type="range" id="timeline-slider" min="0" max="100" step="0.1" value="0" class="w-full">
-                    </div>
+                <div class="mb-3">
+                    <label class="block text-xs font-medium text-gray-700">不透明度 (<span id="opacity-val">0.5</span>)</label>
+                    <input type="range" id="opacity-slider" min="0.1" max="1.0" step="0.1" value="0.5" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
                 </div>
 
-                <div class="bg-white p-4 rounded-lg shadow">
-                    <h2 id="settings-toggle" class="text-xl font-semibold mb-3 border-b pb-2 cursor-pointer hover:text-blue-500 flex justify-between items-center">
-                        🎨 自定义设置
-                        <span class="text-gray-500">▼</span>
-                    </h2>
-                    <div id="settings-panel" class="space-y-3">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">颜色方案</label>
-                            <select id="color-scheme" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
-                                <option value="jet">Jet (默认)</option>
-                                <option value="viridis">Viridis</option>
-                                <option value="plasma">Plasma</option>
-                                <option value="coolwarm">Coolwarm</option>
-                                <option value="grayscale">Grayscale</option>
-                            </select>
-                        </div>
-
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">透明度 (<span id="opacity-val">0.8</span>)</label>
-                            <input type="range" id="opacity-slider" min="0.3" max="1.0" step="0.1" value="0.8" class="w-full">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">模糊半径 (<span id="blur-val">5</span> px)</label>
-                            <input type="range" id="blur-slider" min="1" max="10" step="1" value="5" class="w-full">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">点大小 (<span id="size-val">5</span> px)</label>
-                            <input type="range" id="size-slider" min="2" max="10" step="1" value="5" class="w-full">
-                        </div>
-                        <div id="3d-settings" class="space-y-3 hidden border-t pt-3">
-                             <h4 class="text-md font-medium">3D 专属设置</h4>
-                             <div>
-                                <label class="block text-sm font-medium text-gray-700">高度缩放 (<span id="height-scale-val">1.0</span>x)</label>
-                                <input type="range" id="height-scale-slider" min="0.1" max="3.0" step="0.1" value="1.0" class="w-full">
-                             </div>
-                             <div class="flex items-center">
-                                <input id="show-axes" type="checkbox" checked class="h-4 w-4 text-blue-600 border-gray-300 rounded mr-2">
-                                <label for="show-axes" class="text-sm font-medium text-gray-700">显示坐标轴</label>
-                             </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="bg-white p-4 rounded-lg shadow">
-                    <h2 class="text-xl font-semibold mb-3 border-b pb-2">🖼️ 导出功能</h2>
-                    <div class="space-y-2">
-                        <button id="export-png-btn" class="w-full bg-indigo-500 text-white p-2 rounded-md hover:bg-indigo-600 transition">导出当前 PNG 图片</button>
-                        <button id="export-gif-btn" class="w-full bg-indigo-500 text-white p-2 rounded-md hover:bg-indigo-600 transition">导出 GIF 动画</button>
-                        <button id="export-video-btn" class="w-full bg-indigo-500 text-white p-2 rounded-md hover:bg-indigo-600 transition">导出 MP4 视频</button>
-                    </div>
-                    <div id="export-status" class="mt-2 text-sm text-center text-gray-500 hidden"></div>
-                </div>
+                <p class="text-xs text-gray-500 mt-2">颜色配置请直接修改 JS 代码中的 `colorConfig` 变量。</p>
             </div>
+
+        </aside>
+
+        <main id="vis-container" class="flex-1 bg-gray-200 relative">
+            <canvas id="vis-2d" class="vis-canvas-2d"></canvas>
+            <canvas id="vis-3d" class="vis-canvas-3d"></canvas>
         </main>
 
-        <footer class="mt-4 bg-gray-800 text-white p-3 rounded-lg shadow-lg flex justify-between items-center text-sm">
-            <span id="status-bar">🚀 准备就绪。请上传 CSV 文件开始可视化。</span>
-            <span>&copy; 轨迹可视化工具 (Powered by Gemini)</span>
-        </footer>
     </div>
 
-    <div id="modal-backdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
-        <div id="modal-content" class="bg-white p-6 rounded-lg shadow-xl w-11/12 max-w-lg">
-            </div>
-    </div>
 
     <script>
-        // --- 全局变量 ---
-        let allData = [];
-        let cleanData = [];
-        let visualizationMode = '2D'; // '2D' or '3D'
-        let playInterval = null;
-        let animationFrameId = null;
+        // =================================================================
+        // 全局变量定义
+        // =================================================================
+
+        let allData = [];           // 原始解析数据
+        let cleanData = [];         // 清理后的有效数据
+        let chart2d = null;         // Chart.js 实例
+        let currentVisMode = '2d';  // 当前模式
+
+        // 3D Three.js 变量
+        let scene, camera, renderer, controls;
+        let pointsCloud2D, pointsCloud3D, currentSphere;
+        let line3D;
+        let animationFrameId;
+
+        // 播放控制变量
         let currentFrameIndex = 0;
+        let playInterval = null;
         let playbackSpeed = 1.0;
-        let totalFrames = 0;
+        const baseInterval = 10; // 基础间隔时间（毫秒）
 
-        // --- Three.js 变量 ---
-        let scene, camera, renderer, controls, cube;
+        // --- 颜色配置变量 (参考用户图片，使用深色背景和亮色点) ---
+        let colorConfig = {
+            historyLine: 'rgba(59, 130, 246, 0.4)', // 历史轨迹线 (淡蓝)
+            currentPoint: 'rgba(255, 255, 0, 1.0)', // 当前高亮点 (黄色)
+            heatmapColor: 'rgba(255, 0, 0, 1.0)',   // 热力点基础色 (红色)
+            backgroundColor: '#27272a'              // 可视化区域背景色 (深灰)
+        };
 
-        // --- D3/Chart.js 变量 (2D) ---
-        let chart2d;
-        let canvas2d = document.getElementById('vis-canvas-2d');
-        let ctx2d = canvas2d.getContext('2d');
-        
-        // --- 常量：CSV 要求的列名 ---
-        const REQUIRED_COLUMNS = [
-            'timestamp', 'x_2d', 'y_2d',
-            'x_3d(m)', 'y_3d(m)', 'z_3d(m)'
-        ];
-        
-        // --- 颜色映射函数 (简化版) ---
-        function getColor(value, max) {
-            const ratio = value / max;
-            if (ratio < 0.2) return 'rgba(0, 0, 255, 0.5)'; // Blue
-            if (ratio < 0.5) return 'rgba(0, 255, 0, 0.5)'; // Green
-            if (ratio < 0.8) return 'rgba(255, 255, 0, 0.5)'; // Yellow
-            return 'rgba(255, 0, 0, 0.5)'; // Red
+        // =================================================================
+        // 核心函数：数据处理
+        // =================================================================
+
+        /**
+         * 清理并处理数据，筛选出有效的 3D/2D 坐标。
+         * 确保列名和数据类型正确。
+         */
+        function processAndCleanData(data) {
+            const requiredFields = ['timestamp', 'x_2d', 'y_2d', 'x_3d(m)', 'y_3d(m)', 'z_3d(m)'];
+            
+            if (data.length === 0 || !requiredFields.every(field => data[0].hasOwnProperty(field))) {
+                document.getElementById('status').textContent = '❌ 数据列名错误或数据为空。';
+                return [];
+            }
+
+            return data.filter(d => {
+                // 确保所有关键字段都是数字且不为空
+                return requiredFields.every(field => typeof d[field] === 'number' && !isNaN(d[field]));
+            });
+        }
+
+        /**
+         * 计算运动指标（总时长、速度等）
+         */
+        function calculateMotionMetrics(data) {
+            if (data.length < 2) {
+                document.getElementById('total-time').textContent = '0';
+                document.getElementById('max-speed').textContent = '0';
+                document.getElementById('avg-speed').textContent = '0';
+                return;
+            }
+
+            // 假设时间戳单位为秒 (s)
+            const startTime = data[0].timestamp;
+            const endTime = data[data.length - 1].timestamp;
+            const totalTime = endTime - startTime;
+            
+            let totalDistance = 0;
+            let maxSpeed = 0;
+            
+            for (let i = 1; i < data.length; i++) {
+                const prev = data[i - 1];
+                const curr = data[i];
+                
+                // 3D 距离 (米)
+                const distance = Math.sqrt(
+                    Math.pow(curr['x_3d(m)'] - prev['x_3d(m)'], 2) +
+                    Math.pow(curr['y_3d(m)'] - prev['y_3d(m)'], 2) +
+                    Math.pow(curr['z_3d(m)'] - prev['z_3d(m)'], 2)
+                );
+                
+                // 时间差 (秒)
+                const timeDiff = curr.timestamp - prev.timestamp;
+
+                if (timeDiff > 0) {
+                    const speed = distance / timeDiff;
+                    totalDistance += distance;
+                    if (speed > maxSpeed) {
+                        maxSpeed = speed;
+                    }
+                }
+            }
+            
+            const avgSpeed = totalDistance / totalTime || 0;
+
+            document.getElementById('total-time').textContent = totalTime.toFixed(2);
+            document.getElementById('max-speed').textContent = maxSpeed.toFixed(2);
+            document.getElementById('avg-speed').textContent = avgSpeed.toFixed(2);
+        }
+
+        // =================================================================
+        // 核心函数：可视化初始化与更新
+        // =================================================================
+
+        /**
+         * 初始化 2D Chart.js 图表
+         */
+        function init2DChart() {
+            const ctx = document.getElementById('vis-2d').getContext('2d');
+            if (chart2d) {
+                chart2d.destroy(); // 销毁旧实例
+            }
+            
+            // 确保使用深色背景
+            const bgColor = colorConfig.backgroundColor;
+            const textColor = '#e4e4e7'; // 浅色文字
+
+            chart2d = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: '当前点',
+                        data: [],
+                        // 引用 currentPoint 颜色
+                        backgroundColor: colorConfig.currentPoint, 
+                        pointRadius: 5,
+                        borderColor: 'rgba(0, 0, 0, 0)',
+                        borderWidth: 0,
+                    },
+                    {
+                        label: '历史轨迹',
+                        data: [],
+                        // 引用 historyLine 颜色
+                        backgroundColor: colorConfig.historyLine, 
+                        borderColor: colorConfig.historyLine,
+                        borderWidth: 1,
+                        showLine: true,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    plugins: {
+                        legend: { labels: { color: textColor } },
+                        title: { display: true, text: '2D 轨迹 (x_2d, y_2d)', color: textColor }
+                    },
+                    scales: {
+                        x: { type: 'linear', position: 'bottom', title: { display: true, text: 'X (像素)', color: textColor }, ticks: { color: textColor }, grid: { color: 'rgba(255,255,255,0.1)' } },
+                        y: { type: 'linear', title: { display: true, text: 'Y (像素)', color: textColor }, ticks: { color: textColor }, grid: { color: 'rgba(255,255,255,0.1)' } }
+                    },
+                    // 设置背景色
+                    layout: {
+                        padding: 10
+                    },
+                    backgroundColor: bgColor
+                }
+            });
+            // 确保 Canvas 元素的背景色也被设置
+            document.getElementById('vis-2d').style.backgroundColor = bgColor;
+        }
+
+        /**
+         * 初始化 3D Three.js 场景
+         */
+        function init3DScene() {
+            const container = document.getElementById('vis-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            const canvas3d = document.getElementById('vis-3d');
+
+            // 1. 场景 (Scene)
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(colorConfig.backgroundColor.replace('#', '0x')); // 设置背景色
+
+            // 2. 相机 (Camera) - 使用透视相机
+            camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 100000); // 增大 far plane
+            camera.position.set(200, 200, 200); // 初始相机位置，调整到合适范围
+
+            // 3. 渲染器 (Renderer)
+            renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true });
+            renderer.setSize(width, height);
+            
+            // 4. 交互控制 (Controls)
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; 
+            controls.dampingFactor = 0.05;
+
+            // 5. 光源
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(100, 100, 100);
+            scene.add(directionalLight);
+
+            // 6. 坐标轴 (Axes Helper)
+            // 自动根据数据范围调整坐标轴大小会更好，这里先给一个大值
+            const axesHelper = new THREE.AxesHelper(5000); 
+            axesHelper.name = 'Axes';
+            scene.add(axesHelper);
+
+            // 7. 渲染循环 (Animate Loop)
+            function animate() {
+                animationFrameId = requestAnimationFrame(animate);
+                controls.update(); // 必须调用
+                renderer.render(scene, camera);
+            }
+            animate();
         }
 
 
-        // ------------------------------------
-        // --- I. 数据上传与解析 (Papa Parse) ---
-        // ------------------------------------
+        /**
+         * 渲染 3D 可视化
+         */
+        function render3DVisualization(data) {
+            // 1. 清理旧的轨迹和点
+            const oldPoints = scene.getObjectByName('TrajectoryPoints');
+            const oldLine = scene.getObjectByName('TrajectoryLine');
+            const oldSphere = scene.getObjectByName('CurrentPoint');
+            
+            if (oldPoints) scene.remove(oldPoints);
+            if (oldLine) scene.remove(oldLine);
+            if (oldSphere) scene.remove(oldSphere);
+            
+            // 2. 绘制 3D 轨迹线
+            const points = data.map(d => new THREE.Vector3(d['x_3d(m)'], d['y_3d(m)'], d['z_3d(m)']));
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const material = new THREE.LineBasicMaterial({ 
+                color: new THREE.Color(colorConfig.historyLine),
+                transparent: true,
+                opacity: 0.8
+            });
+            line3D = new THREE.Line(geometry, material);
+            line3D.name = 'TrajectoryLine';
+            scene.add(line3D);
 
-        // 初始化文件上传/拖拽区域
+            // 3. 绘制 3D 热力点 (Point Cloud)
+            const pointsMaterial = new THREE.PointsMaterial({
+                color: new THREE.Color(colorConfig.heatmapColor), 
+                size: parseFloat(document.getElementById('size-slider').value) * 0.5, 
+                transparent: true,
+                opacity: parseFloat(document.getElementById('opacity-slider').value),
+                sizeAttenuation: true // 确保点的大小会随距离变化
+            });
+            pointsCloud3D = new THREE.Points(geometry, pointsMaterial);
+            pointsCloud3D.name = 'TrajectoryPoints';
+            scene.add(pointsCloud3D);
+
+            // 4. 更新当前高亮点 (Current Point Sphere)
+            update3DPoint(data[currentFrameIndex]);
+        }
+
+        /**
+         * 更新 2D 轨迹和当前点
+         */
+        function update2DChart() {
+            if (!chart2d || cleanData.length === 0) return;
+
+            const maxFrames = parseInt(document.getElementById('frame-slider').max);
+            
+            // 1. 历史轨迹线 (从头到当前帧)
+            const historyData = cleanData.slice(0, currentFrameIndex + 1).map(d => ({ x: d.x_2d, y: d.y_2d }));
+            chart2d.data.datasets[1].data = historyData;
+
+            // 2. 当前点 (只显示一个点)
+            const currentPoint = cleanData[currentFrameIndex];
+            chart2d.data.datasets[0].data = currentPoint ? [{ x: currentPoint.x_2d, y: currentPoint.y_2d }] : [];
+            chart2d.data.datasets[0].pointRadius = parseInt(document.getElementById('size-slider').value);
+            chart2d.data.datasets[0].backgroundColor = colorConfig.currentPoint; 
+            
+            chart2d.update('none'); 
+        }
+
+        /**
+         * 更新 3D 场景中的当前点位置
+         */
+        function update3DPoint(pointData) {
+            const oldSphere = scene.getObjectByName('CurrentPoint');
+            if (oldSphere) scene.remove(oldSphere);
+            
+            if (!pointData) return;
+
+            // 绘制当前高亮点 (Sphere)
+            const radius = parseFloat(document.getElementById('size-slider').value) * 1.5; // 半径比点云大
+            const sphereGeometry = new THREE.SphereGeometry(radius, 16, 16); 
+            const sphereMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(colorConfig.currentPoint) });
+            
+            currentSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            currentSphere.position.set(pointData['x_3d(m)'], pointData['y_3d(m)'], pointData['z_3d(m)']);
+            currentSphere.name = 'CurrentPoint';
+            scene.add(currentSphere);
+
+            // 优化：将相机对准当前点
+            // controls.target.copy(currentSphere.position);
+            // controls.update();
+
+            renderer.render(scene, camera);
+        }
+        
+        // =================================================================
+        // UI 和控制函数
+        // =================================================================
+
+        /**
+         * 切换 2D/3D 可视化模式
+         */
+        function switchVisualizationMode(mode) {
+            currentVisMode = mode;
+            const vis2d = document.getElementById('vis-2d');
+            const vis3d = document.getElementById('vis-3d');
+
+            if (mode === '2d') {
+                vis2d.style.display = 'block';
+                vis3d.style.display = 'none';
+                if (!chart2d) init2DChart();
+                updateVisualizations();
+            } else {
+                vis2d.style.display = 'none';
+                vis3d.style.display = 'block';
+                if (!scene) init3DScene();
+                render3DVisualization(cleanData);
+            }
+        }
+        
+        /**
+         * 更新所有可视化内容 (2D 和 3D)
+         */
+        function updateVisualizations() {
+            if (cleanData.length === 0) return;
+            
+            if (currentVisMode === '2d') {
+                update2DChart();
+            } else {
+                // 3D 模式下，主要通过 update3DPoint 更新当前点
+                if (scene) {
+                    // 如果是初始渲染，需要先渲染所有轨迹点和线
+                    if (!scene.getObjectByName('TrajectoryLine')) {
+                         render3DVisualization(cleanData);
+                    }
+                    update3DPoint(cleanData[currentFrameIndex]);
+                } else {
+                    init3DScene();
+                    render3DVisualization(cleanData);
+                }
+            }
+        }
+
+        /**
+         * 重置播放状态
+         */
+        function resetPlayback(data) {
+            stopPlayback();
+            currentFrameIndex = 0;
+            const maxFrame = data.length > 0 ? data.length - 1 : 0;
+            
+            document.getElementById('frame-slider').max = maxFrame;
+            document.getElementById('frame-slider').value = 0;
+            document.getElementById('frame-max').textContent = maxFrame;
+            document.getElementById('frame-val').textContent = 0;
+            document.getElementById('playback-controls').style.display = 'block';
+
+            updateVisualizations();
+        }
+
+        /**
+         * 开始动态播放
+         */
+        function startPlayback() {
+            if (playInterval) return;
+
+            const intervalTime = baseInterval / playbackSpeed;
+            const totalFrames = cleanData.length - 1;
+            
+            document.getElementById('play-btn').innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM7.25 7a.75.75 0 00-1.5 0v6a.75.75 0 001.5 0V7zM11.25 7a.75.75 0 00-1.5 0v6a.75.75 0 001.5 0V7zM15.25 7a.75.75 0 00-1.5 0v6a.75.75 0 001.5 0V7z"></path></svg><span class="ml-2">暂停</span>';
+
+            playInterval = setInterval(() => {
+                if (currentFrameIndex >= totalFrames) {
+                    stopPlayback();
+                    // 播放结束后，按钮切回播放状态
+                    document.getElementById('play-btn').innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"></path></svg><span class="ml-2">播放</span>';
+                    return;
+                }
+                
+                currentFrameIndex++;
+                document.getElementById('frame-slider').value = currentFrameIndex;
+                document.getElementById('frame-val').textContent = currentFrameIndex;
+                updateVisualizations();
+
+            }, intervalTime);
+        }
+
+        /**
+         * 停止动态播放
+         */
+        function stopPlayback() {
+            clearInterval(playInterval);
+            playInterval = null;
+            document.getElementById('play-btn').innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"></path></svg><span class="ml-2">播放</span>';
+        }
+
+        // =================================================================
+        // 事件监听器
+        // =================================================================
+
         document.addEventListener('DOMContentLoaded', () => {
-            const input = document.getElementById('csv-file-input');
-            const uploadBtn = document.getElementById('upload-btn');
-            const dragArea = document.getElementById('upload-drag-area');
-
-            // 监听按钮点击
-            uploadBtn.addEventListener('click', () => input.click());
-
-            // 监听文件选择
-            input.addEventListener('change', (e) => handleFileUpload(e.target.files[0]));
-
-            // 拖拽事件监听
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                dragArea.addEventListener(eventName, preventDefaults, false);
+            
+            // 1. 文件上传事件
+            document.getElementById('csv-file').addEventListener('change', handleFileUpload);
+            
+            // 2. 模式切换事件
+            document.getElementById('vis-mode').addEventListener('change', (e) => {
+                switchVisualizationMode(e.target.value);
             });
-            ['dragenter', 'dragover'].forEach(eventName => {
-                dragArea.addEventListener(eventName, () => dragArea.classList.add('active'), false);
+            
+            // 3. 播放/暂停按钮
+            document.getElementById('play-btn').addEventListener('click', () => {
+                if (playInterval) {
+                    stopPlayback();
+                } else {
+                    // 如果已到终点，从头开始播放
+                    if (currentFrameIndex >= cleanData.length - 1) {
+                        currentFrameIndex = 0;
+                    }
+                    startPlayback();
+                }
             });
-            ['dragleave', 'drop'].forEach(eventName => {
-                dragArea.addEventListener(eventName, () => dragArea.classList.remove('active'), false);
-            });
-            dragArea.addEventListener('drop', handleDrop, false);
 
-            // 初始化 2D/3D 模式
-            init2DChart();
-            init3DScene();
+            // 4. 进度条滑块
+            document.getElementById('frame-slider').addEventListener('input', (e) => {
+                stopPlayback();
+                currentFrameIndex = parseInt(e.target.value);
+                document.getElementById('frame-val').textContent = currentFrameIndex;
+                updateVisualizations();
+            });
+
+            // 5. 速度调整滑块 (关键修复: 重新启动定时器)
+            document.getElementById('speed-slider').addEventListener('input', (e) => {
+                playbackSpeed = parseFloat(e.target.value);
+                document.getElementById('speed-val').textContent = playbackSpeed.toFixed(1);
+                if (playInterval) {
+                    // 如果正在播放，重新启动定时器以应用新速度
+                    clearInterval(playInterval);
+                    startPlayback(); 
+                }
+            });
+
+            // 6. 尺寸和不透明度滑块
+            document.getElementById('size-slider').addEventListener('input', (e) => {
+                document.getElementById('size-val').textContent = e.target.value;
+                // 重新渲染以更新点大小
+                updateVisualizations();
+            });
+
+            document.getElementById('opacity-slider').addEventListener('input', (e) => {
+                document.getElementById('opacity-val').textContent = e.target.value;
+                // 重新渲染以更新不透明度
+                updateVisualizations();
+            });
+
+            // 7. 窗口尺寸调整 (响应式布局)
             window.addEventListener('resize', onWindowResize);
-            onWindowResize();
+            
+            // 初始化默认模式
+            switchVisualizationMode('2d');
         });
 
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
+        /**
+         * 窗口尺寸调整函数 (用于 2D 和 3D)
+         */
+        function onWindowResize() {
+            const container = document.getElementById('vis-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            // 2D Resize
+            if (chart2d) {
+                chart2d.resize();
+            }
+
+            // 3D Resize
+            if (camera && renderer) {
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                renderer.setSize(width, height);
+            }
         }
 
-        function handleDrop(e) {
-            let dt = e.dataTransfer;
-            let files = dt.files;
-            handleFileUpload(files[0]);
-        }
+        /**
+         * 处理文件上传 (核心解析逻辑)
+         */
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            const status = document.getElementById('status');
+            const progressDiv = document.getElementById('progress-container');
 
-        function handleFileUpload(file) {
             if (!file) return;
 
-            // 1. 显示加载状态
-            const status = document.getElementById('status-bar');
-            const progressDiv = document.getElementById('upload-progress');
-            progressDiv.style.width = '0%';
+            status.textContent = '▶️ 正在解析 CSV 文件...';
             progressDiv.classList.remove('hidden');
-            status.textContent = '⏳ 正在解析 CSV 文件...';
-            
-            // ... 省略了 handleFileUpload 函数开头部分
 
+            // 1. 重置状态
+            stopPlayback();
+            allData = [];
+            cleanData = [];
+            
             // 2. 使用 Papa Parse 解析 CSV
             Papa.parse(file, {
                 header: true,
                 skipEmptyLines: 'greedy',
-                dynamicTyping: true,
+                dynamicTyping: true, // 尝试将数字解析为数字类型
                 worker: true, // 关键：在后台线程中运行，防止 UI 卡顿
-                // !!! 移除了 step 函数，让 worker 一次性处理整个文件 !!!
                 
                 complete: (results, file) => {
                     progressDiv.classList.add('hidden');
@@ -324,11 +650,9 @@
                     }
 
                     // 4. 更新 UI 和可视化
-                    updateDataStats(cleanData);
                     calculateMotionMetrics(cleanData);
-                    resetPlayback(cleanData);
-                    updateVisualizations();
-
+                    resetPlayback(cleanData); // 重置并触发初次可视化
+                    
                     status.textContent = `✅ 数据加载成功！共 ${cleanData.length} 个有效数据点。`;
                 },
                 error: (error, file) => {
@@ -336,787 +660,7 @@
                     status.textContent = `❌ CSV 解析错误: ${error.message}`;
                 }
             });
-
-// ... 省略了 handleFileUpload 函数结尾部分
         }
-
-        /**
-         * @description 过滤、清洗和规范化数据。
-         * @param {Array<Object>} rawData - 原始 Papa Parse 数据数组。
-         * @returns {Array<Object>} 清洗后的数据数组。
-         */
-        function processAndCleanData(rawData) {
-            const cleaned = [];
-            
-            // 检查必需列是否存在
-            const headers = Object.keys(rawData[0] || {});
-            const hasAllColumns = REQUIRED_COLUMNS.every(col => headers.includes(col));
-
-            if (!hasAllColumns) {
-                document.getElementById('status-bar').textContent = '⚠️ 警告：CSV 缺少必需列。请检查列名！';
-                return [];
-            }
-
-            rawData.forEach(row => {
-                // 确保 timestamp 和所有坐标值都是有效的数字
-                const valid = REQUIRED_COLUMNS.every(col => {
-                    const value = row[col];
-                    // 检查是否为数字且不为 NaN
-                    return value !== null && value !== '' && !isNaN(Number(value));
-                });
-
-                if (valid) {
-                    cleaned.push({
-                        timestamp: Number(row['timestamp']),
-                        x_2d: Number(row['x_2d']),
-                        y_2d: Number(row['y_2d']),
-                        x_3d: Number(row['x_3d(m)']),
-                        y_3d: Number(row['y_3d(m)']),
-                        z_3d: Number(row['z_3d(m)'])
-                    });
-                }
-            });
-            
-            // 按时间戳排序 (确保动态播放正确)
-            cleaned.sort((a, b) => a.timestamp - b.timestamp);
-            
-            return cleaned;
-        }
-
-        // ------------------------------------
-        // --- II. 数据概览与指标计算 ---
-        // ------------------------------------
-
-        function updateDataStats(data) {
-            const timestamps = data.map(d => d.timestamp);
-            const x2d = data.map(d => d.x_2d);
-            const y2d = data.map(d => d.y_2d);
-            const x3d = data.map(d => d.x_3d);
-            const y3d = data.map(d => d.y_3d);
-            const z3d = data.map(d => d.z_3d);
-
-            const minT = Math.min(...timestamps);
-            const maxT = Math.max(...timestamps);
-
-            document.getElementById('stat-total-points').textContent = data.length;
-            document.getElementById('stat-total-time').textContent = `${(maxT - minT).toFixed(2)} s`;
-            document.getElementById('stat-time-range').textContent = `${minT.toFixed(2)}s - ${maxT.toFixed(2)}s`;
-            
-            document.getElementById('stat-2d-range').textContent = 
-                `X: [${Math.min(...x2d).toFixed(2)}, ${Math.max(...x2d).toFixed(2)}] / Y: [${Math.min(...y2d).toFixed(2)}, ${Math.max(...y2d).toFixed(2)}]`;
-
-            document.getElementById('stat-3d-range').textContent = 
-                `X: [${Math.min(...x3d).toFixed(2)}, ${Math.max(...x3d).toFixed(2)}], Y: [${Math.min(...y3d).toFixed(2)}, ${Math.max(...y3d).toFixed(2)}], Z: [${Math.min(...z3d).toFixed(2)}, ${Math.max(...z3d).toFixed(2)}]`;
-
-            // 更新播放滑块
-            totalFrames = data.length;
-            document.getElementById('max-time').textContent = (maxT - minT).toFixed(2);
-            document.getElementById('timeline-slider').max = totalFrames - 1;
-        }
-
-        /**
-         * @description 计算核心运动指标 (基于 3D 数据)。
-         * @param {Array<Object>} data - 清洗后的数据数组。
-         */
-        function calculateMotionMetrics(data) {
-            if (data.length < 2) {
-                document.getElementById('metric-distance').textContent = '0.00 m';
-                document.getElementById('metric-avg-speed').textContent = '0.00 m/s';
-                document.getElementById('metric-max-speed').textContent = '0.00 m/s';
-                return;
-            }
-
-            let totalDistance = 0;
-            let maxInstantaneousSpeed = 0;
-            
-            for (let i = 1; i < data.length; i++) {
-                const p1 = data[i - 1];
-                const p2 = data[i];
-
-                // 欧氏距离 (3D)
-                const dx = p2.x_3d - p1.x_3d;
-                const dy = p2.y_3d - p1.y_3d;
-                const dz = p2.z_3d - p1.z_3d;
-                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                totalDistance += dist;
-                
-                // 时间间隔
-                const dt = p2.timestamp - p1.timestamp;
-                
-                if (dt > 0) {
-                    const speed = dist / dt;
-                    if (speed > maxInstantaneousSpeed) {
-                        maxInstantaneousSpeed = speed;
-                    }
-                }
-            }
-
-            const totalTime = data[data.length - 1].timestamp - data[0].timestamp;
-            const avgSpeed = totalTime > 0 ? totalDistance / totalTime : 0;
-
-            document.getElementById('metric-distance').textContent = `${totalDistance.toFixed(2)} m`;
-            document.getElementById('metric-avg-speed').textContent = `${avgSpeed.toFixed(2)} m/s`;
-            document.getElementById('metric-max-speed').textContent = `${maxInstantaneousSpeed.toFixed(2)} m/s`;
-        }
-        
-        // 复制指标数值
-        document.querySelectorAll('#metrics-display span').forEach(el => {
-            el.addEventListener('click', (e) => {
-                const text = e.target.textContent.split(' ')[0];
-                navigator.clipboard.writeText(text).then(() => {
-                    const originalText = e.target.textContent;
-                    e.target.textContent = '已复制!';
-                    setTimeout(() => e.target.textContent = originalText, 500);
-                });
-            });
-        });
-
-        // ------------------------------------
-        // --- III. 可视化切换与初始化 ---
-        // ------------------------------------
-
-        document.getElementById('toggle-vis-btn').addEventListener('click', () => {
-            visualizationMode = visualizationMode === '2D' ? '3D' : '2D';
-            
-            const is3D = visualizationMode === '3D';
-            document.getElementById('vis-canvas-2d').classList.toggle('hidden', is3D);
-            document.getElementById('vis-canvas-3d').classList.toggle('hidden', !is3D);
-            document.getElementById('mode-display').textContent = `当前: ${is3D ? '3D' : '2D'} 模式`;
-            document.getElementById('3d-settings').classList.toggle('hidden', !is3D);
-            
-            // 重绘或更新
-            updateVisualizations();
-        });
-
-        // 2D 初始化 (Chart.js 实例)
-        function init2DChart() {
-            if (chart2d) chart2d.destroy();
-            chart2d = new Chart(ctx2d, {
-                type: 'scatter',
-                data: {
-                    datasets: [{
-                        label: '轨迹点',
-                        data: [],
-                        backgroundColor: 'rgba(255, 0, 0, 1)',
-                        pointRadius: 5,
-                        borderColor: 'rgba(0, 0, 0, 0)',
-                        borderWidth: 0,
-                    },
-                    // 轨迹线
-                    {
-                        label: '历史轨迹',
-                        data: [],
-                        backgroundColor: 'rgba(0, 0, 255, 0.3)',
-                        borderColor: 'rgba(0, 0, 255, 0.3)',
-                        borderWidth: 1,
-                        showLine: true,
-                        pointRadius: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: { type: 'linear', position: 'bottom', title: { display: true, text: 'X (2D)' } },
-                        y: { type: 'linear', title: { display: true, text: 'Y (2D)' } }
-                    },
-                    plugins: { legend: { display: false } },
-                    animation: false
-                }
-            });
-        }
-        
-        // 3D 初始化 (Three.js 实例)
-        function init3DScene() {
-            const container = document.getElementById('vis-canvas-3d');
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x27272a); // 与容器背景一致
-            camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            
-            renderer.setSize(container.clientWidth, container.clientHeight);
-            container.appendChild(renderer.domElement);
-
-            camera.position.set(5, 5, 5); // 初始视角
-
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true; // 启用阻尼效果
-            controls.dampingFactor = 0.05;
-            
-            // 添加环境光和点光源
-            scene.add(new THREE.AmbientLight(0x404040, 5));
-            const light = new THREE.PointLight(0xffffff, 100);
-            light.position.set(10, 10, 10);
-            scene.add(light);
-            
-            // 3D 坐标轴 (默认显示)
-            const axesHelper = new THREE.AxesHelper(5); // 5个单位长度
-            axesHelper.name = 'Axes';
-            scene.add(axesHelper);
-
-            function animate() {
-                animationFrameId = requestAnimationFrame(animate);
-                controls.update();
-                renderer.render(scene, camera);
-            }
-            animate();
-        }
-        
-        function onWindowResize() {
-            const container = document.getElementById('vis-container');
-            const width = container.clientWidth;
-            const height = container.clientHeight;
-
-            // 2D Resize
-            canvas2d.width = width;
-            canvas2d.height = height;
-            if (chart2d) chart2d.resize();
-
-            // 3D Resize
-            if (camera && renderer) {
-                camera.aspect = width / height;
-                camera.updateProjectionMatrix();
-                renderer.setSize(width, height);
-            }
-        }
-        
-        // ------------------------------------
-        // --- IV. 可视化更新逻辑 ---
-        // ------------------------------------
-
-        function updateVisualizations() {
-            if (visualizationMode === '2D') {
-                render2DHeatmap(cleanData);
-                update2DChart(currentFrameIndex);
-            } else {
-                render3DVisualization(cleanData);
-            }
-        }
-        
-        /**
-         * @description 模拟 2D 热力图绘制 (使用 Canvas 模拟热力图逻辑)。
-         * @param {Array<Object>} data - 轨迹数据。
-         */
-        function render2DHeatmap(data) {
-            if (data.length === 0) return;
-            // 清除旧热力图 (保留 Chart.js 轨迹)
-            // 真实的实现需要使用专门的热力图库 (如 heatmap.js) 或 WebGL。
-            // 这里的实现是模拟的，只更新 Chart.js 轨迹点。
-
-            // Step 1: 确定数据范围和画布尺寸
-            const width = canvas2d.width;
-            const height = canvas2d.height;
-            const xData = data.map(d => d.x_2d);
-            const yData = data.map(d => d.y_2d);
-            const minX = Math.min(...xData);
-            const maxX = Math.max(...xData);
-            const minY = Math.min(...yData);
-            const maxY = Math.max(...yData);
-
-            // Step 2: 坐标映射函数 (简化)
-            // 假设 Chart.js 的 scatter 图会自动处理坐标映射
-            
-            // Step 3: 绘制热力图 (使用 Canvas 绘制密度点模拟)
-            // ⚠️ 真实的热力图需要复杂的密度计算、高斯模糊和颜色映射。这里仅为结构演示。
-            ctx2d.clearRect(0, 0, width, height);
-            
-            // 绘制一个覆盖全图的低透明度矩形 (模拟热力图背景)
-            // ctx2d.fillStyle = 'rgba(255, 0, 0, 0.05)';
-            // ctx2d.fillRect(0, 0, width, height);
-
-            // 遍历所有点并绘制 (简化模拟热力点)
-            const pointRadius = parseInt(document.getElementById('size-slider').value);
-            data.forEach(d => {
-                // 仅用于视觉展示，热力图应独立于轨迹线
-                // const chartArea = chart2d.chartArea;
-                // const screenX = chart2d.scales.x.getPixelForValue(d.x_2d);
-                // const screenY = chart2d.scales.y.getPixelForValue(d.y_2d);
-
-                // // 模拟热点: 密度越大，颜色越深
-                // ctx2d.fillStyle = 'rgba(255, 100, 0, 0.05)';
-                // ctx2d.beginPath();
-                // ctx2d.arc(screenX, screenY, pointRadius * 5, 0, Math.PI * 2);
-                // ctx2d.fill();
-            });
-        }
-        
-        /**
-         * @description 更新 2D 轨迹线和高亮当前点。
-         * @param {number} frameIndex - 当前播放的帧索引。
-         */
-        function update2DChart(frameIndex) {
-            if (!chart2d || cleanData.length === 0) return;
-            
-            const historyData = cleanData.slice(0, frameIndex + 1).map(d => ({ x: d.x_2d, y: d.y_2d }));
-            const currentPoint = cleanData[frameIndex];
-
-            // 1. 历史轨迹线 (使用 historyData 作为所有点)
-            chart2d.data.datasets[1].data = historyData;
-
-            // 2. 当前点 (只显示一个点)
-            chart2d.data.datasets[0].data = currentPoint ? [{ x: currentPoint.x_2d, y: currentPoint.y_2d }] : [];
-            chart2d.data.datasets[0].pointRadius = parseInt(document.getElementById('size-slider').value);
-
-            chart2d.update('none'); // 'none' for instant update
-            
-            // 3. 实时更新时间轴
-            const minT = cleanData[0].timestamp;
-            const currentTime = currentPoint ? (currentPoint.timestamp - minT).toFixed(2) : (0).toFixed(2);
-            document.getElementById('current-time').textContent = currentTime;
-            document.getElementById('timeline-slider').value = frameIndex;
-
-            // 4. 重绘热力图 (这里仅为演示，热力图在实际中应基于所有历史数据)
-            // render2DHeatmap(cleanData);
-        }
-
-        /**
-         * @description 渲染 3D 轨迹和热力点。
-         * @param {Array<Object>} data - 轨迹数据。
-         */
-        function render3DVisualization(data) {
-            if (!scene || data.length === 0) return;
-            
-            // 移除旧的轨迹和热力点
-            let oldTrajectory = scene.getObjectByName('Trajectory');
-            if (oldTrajectory) scene.remove(oldTrajectory);
-            
-            // 1. 绘制 3D 轨迹线
-            const points = data.slice(0, currentFrameIndex + 1).map(d => new THREE.Vector3(d.x_3d, d.y_3d, d.z_3d));
-            const geometry = new THREE.BufferGeometry().setFromPoints(points);
-            const material = new THREE.LineBasicMaterial({ color: 0x00ffff });
-            const line = new THREE.Line(geometry, material);
-            line.name = 'Trajectory';
-            scene.add(line);
-            
-            // 2. 绘制 3D 热力点 (模拟)
-            // 真实的 3D 热力图通常是体渲染 (Volume Rendering) 或使用 Point Cloud
-            // 这里使用 Point Cloud 模拟轨迹点
-            
-            // 移除旧的点云
-            let oldHeatmap = scene.getObjectByName('Heatmap');
-            if (oldHeatmap) scene.remove(oldHeatmap);
-
-            const allPoints = data.map(d => new THREE.Vector3(d.x_3d, d.y_3d, d.z_3d));
-            const pointsGeometry = new THREE.BufferGeometry().setFromPoints(allPoints);
-            const pointsMaterial = new THREE.PointsMaterial({
-                color: 0xff0000,
-                size: parseFloat(document.getElementById('size-slider').value) * 0.1, // 3D点大小缩放
-                transparent: true,
-                opacity: parseFloat(document.getElementById('opacity-slider').value),
-            });
-            const pointsMesh = new THREE.Points(pointsGeometry, pointsMaterial);
-            pointsMesh.name = 'Heatmap';
-            scene.add(pointsMesh);
-            
-            // 3. 绘制当前高亮点
-            let oldCurrentPoint = scene.getObjectByName('CurrentPoint');
-            if (oldCurrentPoint) scene.remove(oldCurrentPoint);
-            
-            const currentPoint = data[currentFrameIndex];
-            if (currentPoint) {
-                const sphereGeometry = new THREE.SphereGeometry(0.1, 16, 16);
-                const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-                const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
-                sphere.position.set(currentPoint.x_3d, currentPoint.y_3d, currentPoint.z_3d);
-                sphere.name = 'CurrentPoint';
-                scene.add(sphere);
-            }
-            
-            // 4. 更新坐标轴显示
-            const axes = scene.getObjectByName('Axes');
-            if (axes) axes.visible = document.getElementById('show-axes').checked;
-
-            renderer.render(scene, camera);
-        }
-        
-        // ------------------------------------
-        // --- V. 动态显示与控制 ---
-        // ------------------------------------
-
-        document.getElementById('speed-slider').addEventListener('input', (e) => {
-            playbackSpeed = parseFloat(e.target.value);
-            document.getElementById('speed-val').textContent = playbackSpeed.toFixed(1);
-            if (playInterval) {
-                // 如果正在播放，重新启动定时器以应用新速度
-                clearInterval(playInterval);
-                startPlayback();
-            }
-        });
-
-        document.getElementById('timeline-slider').addEventListener('input', (e) => {
-            currentFrameIndex = parseInt(e.target.value);
-            // 停止播放并更新
-            stopPlayback();
-            updateVisualizations();
-        });
-
-        document.getElementById('play-btn').addEventListener('click', () => {
-            if (cleanData.length === 0) {
-                document.getElementById('status-bar').textContent = '⚠️ 请先上传数据！';
-                return;
-            }
-
-            if (playInterval) {
-                stopPlayback(); // 暂停
-                document.getElementById('play-btn').innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"></path></svg>';
-            } else {
-                if (currentFrameIndex >= totalFrames - 1) {
-                    currentFrameIndex = 0; // 播完了，重头开始
-                }
-                startPlayback(); // 播放
-                document.getElementById('play-btn').innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1zm3 1a1 1 0 012 0v4a1 1 0 11-2 0V8z"></path></svg>';
-            }
-        });
-
-        document.getElementById('reset-btn').addEventListener('click', () => {
-            resetPlayback(cleanData);
-        });
-
-        function resetPlayback(data) {
-            stopPlayback();
-            if (data.length > 0) {
-                currentFrameIndex = 0;
-                updateVisualizations();
-                document.getElementById('play-btn').innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"></path></svg>';
-            }
-        }
-        
-        function startPlayback() {
-            if (cleanData.length === 0) return;
-            const maxT = cleanData[cleanData.length - 1].timestamp;
-            const minT = cleanData[0].timestamp;
-            const totalTime = maxT - minT;
-            const avgFrameTime = totalTime / cleanData.length; // 理论上的平均帧间隔时间
-
-            // 核心定时器：基于播放速度和帧数，计算定时器间隔
-            const intervalTime = Math.max(50, (avgFrameTime * 1000) / playbackSpeed); // 最小间隔 50ms
-            
-            playInterval = setInterval(() => {
-                if (currentFrameIndex < totalFrames - 1) {
-                    currentFrameIndex++;
-                    updateVisualizations();
-                } else {
-                    stopPlayback();
-                    document.getElementById('play-btn').innerHTML = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"></path></svg>';
-                }
-            }, intervalTime);
-        }
-        
-        function stopPlayback() {
-            if (playInterval) {
-                clearInterval(playInterval);
-                playInterval = null;
-            }
-        }
-
-        // ------------------------------------
-        // --- VI. 导出功能 (PNG/GIF/Video) ---
-        // ------------------------------------
-        
-        // 1. 导出 PNG
-        document.getElementById('export-png-btn').addEventListener('click', () => {
-            const container = document.getElementById('vis-container');
-            const status = document.getElementById('export-status');
-            status.textContent = '🖼️ 正在生成图片...';
-            status.classList.remove('hidden');
-
-            // 如果是 3D 模式，renderer.domElement 就是我们要转化的 canvas
-            const targetElement = visualizationMode === '3D' ? renderer.domElement : container;
-            
-            html2canvas(targetElement, { 
-                scale: 2, // 提高分辨率
-                backgroundColor: null, 
-                useCORS: true 
-            }).then(canvas => {
-                const link = document.createElement('a');
-                link.download = `trajectory_${visualizationMode}_${Date.now()}.png`;
-                link.href = canvas.toDataURL('image/png');
-                link.click();
-                status.textContent = '✅ PNG 导出成功！';
-                setTimeout(() => status.classList.add('hidden'), 3000);
-            }).catch(err => {
-                status.textContent = '❌ PNG 导出失败: ' + err.message;
-            });
-        });
-
-        // 2. 导出 GIF (弹出设置)
-        document.getElementById('export-gif-btn').addEventListener('click', () => {
-            showExportModal('GIF');
-        });
-        
-        // 3. 导出 Video (弹出设置)
-        document.getElementById('export-video-btn').addEventListener('click', () => {
-            showExportModal('Video');
-        });
-        
-        /**
-         * @description 弹出导出设置模态框
-         * @param {string} type - 'GIF' 或 'Video'
-         */
-        function showExportModal(type) {
-            if (cleanData.length === 0) {
-                document.getElementById('status-bar').textContent = '⚠️ 请先上传数据！';
-                return;
-            }
-
-            stopPlayback(); // 暂停当前动画
-            document.getElementById('modal-backdrop').classList.remove('hidden');
-            document.getElementById('modal-backdrop').classList.add('flex');
-
-            let content = `
-                <h3 class="text-2xl font-bold mb-4">${type} 导出设置</h3>
-                <div class="space-y-3">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">帧率 (FPS: 1-60)</label>
-                        <input type="number" id="export-fps" value="30" min="1" max="60" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
-                    </div>`;
-
-            if (type === 'Video') {
-                content += `
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">分辨率</label>
-                        <select id="export-resolution" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">
-                            <option value="720">720p (1280x720)</option>
-                            <option value="1080">1080p (1920x1080)</option>
-                        </select>
-                    </div>`;
-            }
-            
-            content += `
-                    <div id="export-progress-text" class="text-sm text-center text-blue-600 hidden"></div>
-                </div>
-                <div class="mt-6 flex justify-end space-x-3">
-                    <button id="modal-close-btn" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300">取消</button>
-                    <button id="modal-start-export-btn" data-type="${type}" class="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600">开始导出</button>
-                </div>`;
-
-            document.getElementById('modal-content').innerHTML = content;
-
-            document.getElementById('modal-close-btn').addEventListener('click', closeModal);
-            document.getElementById('modal-start-export-btn').addEventListener('click', handleExportStart);
-        }
-
-        function closeModal() {
-            document.getElementById('modal-backdrop').classList.add('hidden');
-            document.getElementById('modal-backdrop').classList.remove('flex');
-        }
-
-        function handleExportStart(e) {
-            const type = e.target.getAttribute('data-type');
-            const fps = parseInt(document.getElementById('export-fps').value);
-            const resolution = document.getElementById('export-resolution')?.value;
-
-            if (type === 'GIF') {
-                exportGIF(fps);
-            } else if (type === 'Video') {
-                exportVideo(fps, resolution);
-            }
-        }
-        
-        /**
-         * @description 导出 GIF 动画 (使用 gif.js 模拟)
-         * @param {number} fps - 帧率
-         */
-        function exportGIF(fps) {
-            // 真实的 gif.js 运行在 Worker 中，耗时长，这里仅做逻辑演示。
-            const progressEl = document.getElementById('export-progress-text');
-            progressEl.classList.remove('hidden');
-            progressEl.textContent = '🚧 GIF 导出开始... (耗时较长)';
-            
-            // 设定总帧数
-            const totalFramesToCapture = totalFrames; 
-            let frameCounter = 0;
-            
-            // 1. 初始化 GIF 实例
-            const gif = new GIF({
-                workers: 2,
-                quality: 10,
-                delay: 1000 / fps // 帧间隔时间 (ms)
-            });
-
-            // 2. 捕获帧
-            function captureFrame(index) {
-                if (index >= totalFramesToCapture) {
-                    // 所有帧捕获完毕，开始渲染
-                    progressEl.textContent = '渲染中... 请稍候。';
-                    gif.on('finished', function(blob) {
-                        const url = URL.createObjectURL(blob);
-                        progressEl.innerHTML = `<a href="${url}" download="trajectory_animation.gif" class="text-green-600 font-bold">✅ GIF 导出成功！点击下载</a>`;
-                        setTimeout(closeModal, 5000);
-                        resetPlayback(cleanData); // 重置播放状态
-                    });
-                    gif.render();
-                    return;
-                }
-                
-                // 设置到当前帧
-                currentFrameIndex = index;
-                updateVisualizations();
-
-                const targetCanvas = visualizationMode === '3D' ? renderer.domElement : canvas2d;
-                
-                // 使用 html2canvas/domToImage 捕获 Canvas 图像 (异步操作)
-                html2canvas(targetCanvas, { scale: 1, useCORS: true }).then(canvas => {
-                    gif.addFrame(canvas, { delay: 1000 / fps });
-                    frameCounter++;
-                    progressEl.textContent = `🖼️ 捕获进度: ${Math.floor((frameCounter / totalFramesToCapture) * 100)}%`;
-                    
-                    // 递归调用下一帧
-                    requestAnimationFrame(() => captureFrame(index + 1));
-                });
-            }
-            
-            // 3. 开始捕获
-            captureFrame(0);
-        }
-        
-        /**
-         * @description 导出 MP4 视频 (使用 RecordRTC)
-         * @param {number} fps - 帧率
-         * @param {string} resolution - 分辨率 ('720' 或 '1080')
-         */
-        function exportVideo(fps, resolution) {
-            const progressEl = document.getElementById('export-progress-text');
-            progressEl.classList.remove('hidden');
-            progressEl.textContent = '🚧 视频导出开始... (需要浏览器权限)';
-
-            const container = document.getElementById('vis-container');
-            let width = container.clientWidth;
-            let height = container.clientHeight;
-
-            if (resolution === '1080') {
-                width = 1920;
-                height = 1080;
-            } else if (resolution === '720') {
-                width = 1280;
-                height = 720;
-            }
-
-            // 获取要录制的 Canvas
-            const targetCanvas = visualizationMode === '3D' ? renderer.domElement : canvas2d;
-            
-            // 使用 captureStream 获取 MediaStream
-            const stream = targetCanvas.captureStream(fps);
-            
-            const recorder = RecordRTC(stream, {
-                type: 'video',
-                mimeType: 'video/mp4', // 尝试使用 mp4
-                // 仅录制视频
-                video: true,
-                canvas: { width: width, height: height },
-                frameRate: fps,
-                // bitsPerSecond: 8000000 // 8Mbit/s
-            });
-
-            recorder.startRecording();
-            
-            // 播放动画并录制
-            const totalFramesToCapture = totalFrames;
-            let frameCounter = 0;
-            
-            // 重新开始播放，并以固定的帧率驱动
-            currentFrameIndex = 0;
-            const intervalTime = 1000 / fps; // 严格按照 fps 推进
-            
-            const captureInterval = setInterval(() => {
-                if (currentFrameIndex < totalFramesToCapture) {
-                    currentFrameIndex++;
-                    updateVisualizations(); // 推进动画
-                    frameCounter++;
-                    progressEl.textContent = `🎥 录制进度: ${Math.floor((frameCounter / totalFramesToCapture) * 100)}%`;
-                } else {
-                    clearInterval(captureInterval);
-                    recorder.stopRecording(() => {
-                        const blob = recorder.getBlob();
-                        const url = URL.createObjectURL(blob);
-                        progressEl.innerHTML = `<a href="${url}" download="trajectory_video.mp4" class="text-green-600 font-bold">✅ 视频导出成功！点击下载</a>`;
-                        setTimeout(closeModal, 5000);
-                        resetPlayback(cleanData); // 重置播放状态
-                    });
-                }
-            }, intervalTime);
-        }
-        
-        // ------------------------------------
-        // --- VII. 交互与设置 (简化) ---
-        // ------------------------------------
-        
-        // 设置面板折叠
-        document.getElementById('settings-toggle').addEventListener('click', () => {
-            const panel = document.getElementById('settings-panel');
-            const icon = document.querySelector('#settings-toggle span');
-            panel.classList.toggle('hidden');
-            icon.textContent = panel.classList.contains('hidden') ? '▶' : '▼';
-        });
-
-        // 鼠标坐标显示 (2D 模式)
-        document.getElementById('vis-canvas-2d').addEventListener('mousemove', (e) => {
-            if (visualizationMode !== '2D' || !chart2d || cleanData.length === 0) return;
-            
-            const rect = canvas2d.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-
-            // 逆向映射屏幕坐标到数据坐标 (需要 Chart.js 实例)
-            const xVal = chart2d.scales.x.getValueForPixel(mouseX);
-            const yVal = chart2d.scales.y.getValueForPixel(mouseY);
-            
-            const coordsDiv = document.getElementById('mouse-coords');
-            coordsDiv.textContent = `(X: ${xVal.toFixed(2)}, Y: ${yVal.toFixed(2)})`;
-            coordsDiv.classList.remove('hidden');
-        });
-
-        document.getElementById('vis-canvas-2d').addEventListener('mouseleave', () => {
-             document.getElementById('mouse-coords').classList.add('hidden');
-        });
-        
-        // 实时更新参数 (所有滑块)
-        document.querySelectorAll('#settings-panel input[type="range"]').forEach(slider => {
-            slider.addEventListener('input', (e) => {
-                const id = e.target.id;
-                const value = e.target.value;
-                document.getElementById(id.replace('-slider', '-val')).textContent = value;
-                // 实时更新可视化
-                updateVisualizations();
-            });
-        });
-        
-        // 3D 轴显示切换
-        document.getElementById('show-axes')?.addEventListener('change', updateVisualizations);
-
-        // 帮助/说明弹窗
-        document.getElementById('help-btn').addEventListener('click', () => {
-             document.getElementById('modal-backdrop').classList.remove('hidden');
-             document.getElementById('modal-backdrop').classList.add('flex');
-             document.getElementById('modal-content').innerHTML = `
-                <h3 class="text-2xl font-bold mb-4">帮助与使用说明</h3>
-                <p class="mb-3">本工具用于动态物体轨迹热力图可视化，基于 CSV 数据。</p>
-                <h4 class="text-lg font-semibold mb-2">CSV 数据格式要求</h4>
-                <p class="text-sm bg-gray-100 p-3 rounded-md">
-                    CSV 文件必须包含以下**固定列名** (大小写敏感)：<br>
-                    <code class="font-mono text-red-600">timestamp</code> (秒), 
-                    <code class="font-mono text-red-600">x_2d</code>, 
-                    <code class="font-mono text-red-600">y_2d</code>, 
-                    <code class="font-mono text-red-600">x_3d(m)</code> (米), 
-                    <code class="font-mono text-red-600">y_3d(m)</code> (米), 
-                    <code class="font-mono text-red-600">z_3d(m)</code> (米)
-                </p>
-                <h4 class="text-lg font-semibold mt-4 mb-2">功能操作步骤</h4>
-                <ul class="list-disc list-inside text-sm space-y-1">
-                    <li>**数据上传:** 点击或拖拽 CSV 文件到左侧区域，底部状态栏会显示解析结果。</li>
-                    <li>**模式切换:** 使用可视化区域上方的按钮切换 2D 或 3D 视图。</li>
-                    <li>**动态播放:** 使用右侧面板的播放/暂停/重置按钮控制动画，可通过滑块调节速度和时间轴。</li>
-                    <li>**交互:** 2D 视图支持鼠标拖拽平移、滚轮缩放；3D 视图支持左键旋转、右键平移、滚轮缩放。</li>
-                    <li>**导出:** 导出功能在右下角，点击后可设置参数并生成 PNG/GIF/MP4 文件。</li>
-                </ul>
-                <div class="mt-6 flex justify-end">
-                    <button id="modal-close-btn-help" class="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-md hover:bg-blue-600">关闭</button>
-                </div>`;
-            document.getElementById('modal-close-btn-help').addEventListener('click', closeModal);
-        });
-        
     </script>
-
 </body>
 </html>
-Initial commit: Add trajectory visualizer index.html
