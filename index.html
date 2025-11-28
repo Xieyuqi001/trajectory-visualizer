@@ -296,16 +296,16 @@
             progressDiv.classList.remove('hidden');
             status.textContent = '⏳ 正在解析 CSV 文件...';
             
+            // ... 省略了 handleFileUpload 函数开头部分
+
             // 2. 使用 Papa Parse 解析 CSV
             Papa.parse(file, {
                 header: true,
                 skipEmptyLines: 'greedy',
                 dynamicTyping: true,
-                worker: true, // 使用 Web Worker 避免 UI 卡顿
-                step: (row, parser) => {
-                    // 实时更新进度 (模拟)
-                    // progressDiv.style.width = `${(parser.get==true) ? 100 : 0}%`; 
-                },
+                worker: true, // 关键：在后台线程中运行，防止 UI 卡顿
+                // !!! 移除了 step 函数，让 worker 一次性处理整个文件 !!!
+                
                 complete: (results, file) => {
                     progressDiv.classList.add('hidden');
                     
@@ -319,7 +319,7 @@
                     cleanData = processAndCleanData(allData);
 
                     if (cleanData.length === 0) {
-                        status.textContent = '❌ CSV 解析失败：有效数据点不足。';
+                        status.textContent = '❌ CSV 解析失败：有效数据点不足，请检查列名和数值。';
                         return;
                     }
 
@@ -336,6 +336,8 @@
                     status.textContent = `❌ CSV 解析错误: ${error.message}`;
                 }
             });
+
+// ... 省略了 handleFileUpload 函数结尾部分
         }
 
         /**
